@@ -21,3 +21,7 @@
 |---|---|---|
 | 2026-10-18 | `pnpm --filter @profitlens/db test` | 12/12 passed (money precision, effective-dated cost lookup, overlap exclusion, interval/negative checks, idempotent upsert with stale-update guard, webhook dedupe, expense type checks, tenant isolation, cascade delete, store constraints) |
 | 2026-10-18 | `tsc --noEmit` (db, config) | pass |
+| 2026-10-18 | `pnpm test` (all packages) | 45/45 passed — finance 17 (money, metric registry, completeness, timezone/DST presets, comparisons), core 10 (demo determinism, no future events, full-history reconciliation of daily totals vs order results, missing-cost flags, effective-dated cost change, order breakdown sums, dashboard/P&L consistency), db 12, web 6 (formatting exactness, accounting display, CSV escaping/injection) |
+| 2026-10-18 | `pnpm typecheck` | pass (5 packages) |
+| 2026-10-18 | `next build` (apps/web) | pass |
+| 2026-10-18 | `playwright test` (desktop 1440×900 + Pixel 7) against production build | 10/10 passed — auth redirect, sign-up → demo dashboard (banner, incompleteness warning, KPIs, chart), URL-persisted date preset, wrong password rejected, orders + order calculation drawer, products, P&L with expandable ad spend, policy page, planned-phase page, mobile navigation drawer, sign out |

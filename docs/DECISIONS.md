@@ -14,7 +14,7 @@ Format: ID · date · decision · rationale · status.
 | D-008 | 2026-10-18 | Decimal money + effective-dated costs + explicit completeness flags | TrueProfit evidence shows float money and silent $0 COGS; financial accuracy is priority #1 | Accepted (brief) |
 | D-009 | 2026-10-18 | Original visual identity (light-first + dark mode), not TrueProfit's navy theme | Brief forbids reproducing brand identity | Proposed |
 | D-010 | 2026-10-18 | Product name: **ProfitLens** | Owner decision | Accepted (owner) |
-| D-011 | 2026-10-18 | Public repo hygiene: no secrets, customer PII, store financial figures, or TrueProfit images/branding are committed | Repository is public | Accepted |
+| D-011 | 2026-10-18 | Repo hygiene: no secrets or customer PII committed. (Repo made private by owner on 2026-10-18; TrueProfit reference screenshots restored under docs/research for internal reference only) | Owner decision | Accepted (updated) |
 | D-012 | 2026-10-18 | TypeScript 6.0.x (not 7.x) | TS 7 (native) is too new for Next/ESLint tooling compatibility | Accepted |
 | D-013 | 2026-10-18 | Drizzle ORM 0.45 + drizzle-kit instead of Prisma | `numeric` returned as strings (no float leak); SQL-first aggregation; raw SQL for exclusion constraints; Prisma's npm `latest` tag points to an 8.0 RC | Accepted |
 | D-014 | 2026-10-18 | pg-boss (Postgres) for jobs instead of BullMQ/Redis | Transactional enqueue with data writes, cron, retries; one less infrastructure dependency at this scale | Accepted |
@@ -23,3 +23,9 @@ Format: ID · date · decision · rationale · status.
 | D-017 | 2026-10-18 | Tenant isolation enforced in the application layer (OrgScope required by all repositories); Postgres RLS deferred | Simpler for M1; tested; revisit before public SaaS | Accepted (risk noted) |
 | D-018 | 2026-10-18 | Customer PII minimised (Shopify GID, country, first-order date, order count only) | Least data needed for LTV/cohorts; reduces protected-customer-data obligations | Accepted |
 | D-019 | 2026-10-18 | Deploy as one container image with web + worker processes on Railway/Fly + managed Postgres | Simplest production topology; no Redis | Proposed (confirm in Phase 9) |
+| D-020 | 2026-10-18 | Monorepo uses `moduleResolution: Bundler` and extensionless relative imports | Turbopack cannot resolve `.js`-suffixed imports of workspace TS sources; vitest/tsx handle bundler resolution; the worker will be bundled | Accepted |
+| D-021 | 2026-10-18 | Auth rate limits: 5 sign-ups and 10 sign-ins per minute per IP (Better Auth, in-memory store) | Brute-force protection; move to a shared store when scaling beyond one instance | Accepted |
+| D-022 | 2026-10-18 | Demo store is served from an in-memory deterministic generator (never written to the DB), always bannered | Guarantees demo data can never mix with live data | Accepted |
+| D-023 | 2026-10-18 | Dashboard card selection stored per browser (localStorage) in M1 | Low-risk preference; moves to user settings in DB later | Accepted |
+| D-024 | 2026-10-18 | No dual-axis charts: net margin has its own chart; revenue/costs/profit share one currency axis | Data-viz rule (dual axes mislead) | Accepted |
+| D-025 | 2026-10-18 | UI components live in `apps/web/src/components/ui` (hand-written on Radix, shadcn-style) rather than `packages/ui` | Single app consumer; shadcn registry blocked in dev container | Accepted |

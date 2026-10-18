@@ -8,6 +8,13 @@ Never copy TrueProfit code, branding, logos or assets.
 2. Read `docs/DECISIONS.md` before changing architecture or financial policy.
 3. Phase gate: finish the current phase, report, and **wait for owner approval** before starting the next one.
 
+## Commands
+- `pnpm install` · `pnpm typecheck` · `pnpm test` (Postgres 16 needed for `@profitlens/db` tests: `TEST_DATABASE_URL`)
+- `pnpm db:migrate` (uses `DATABASE_URL`) · `pnpm --filter @profitlens/db db:generate` after schema changes
+- Web: `cd apps/web && cp ../../.env.example .env.local` (fill values) → `npx next build && npx next start`
+- E2E: app running on :3000, then `pnpm --filter @profitlens/web e2e` (Chromium at /opt/pw-browsers here)
+- Local Postgres in this container: `pg_ctlcluster 16 main start` (role/db `profitlens`/`profitlens`, test db `profitlens_test`)
+
 ## Key docs
 - `docs/PRODUCT_REQUIREMENTS.md`: scope, milestones (M1/M2/M3), product rules, unknowns.
 - `docs/research/`: TrueProfit investigation (feature inventory, UI, flows, technical findings,
@@ -25,8 +32,9 @@ Never copy TrueProfit code, branding, logos or assets.
 - Evidence labels in research docs: VERIFIED / DOCUMENTED / INFERRED / UNKNOWN.
 
 ## Environment notes
-- Cloud container is ephemeral. Commit and push to GitHub: `yavia369/ProfitLens` (**public** repo, so never
-  commit secrets, customer data, store financial figures or TrueProfit images/branding).
+- Cloud container is ephemeral. Commit and push to GitHub: `yavia369/ProfitLens` (private repo since 2026-10-18;
+  still never commit secrets or customer PII). TrueProfit reference screenshots live in `docs/research/screenshots/`
+  for internal reference only — never use them as app assets.
 - REA (reverse-engineering MCP) is installed; its MCP calls time out at 60 s here, so use the CLI:
   `npx -y rea-agents@6.7.0 <command> <json>`. A headless Chromium with CDP can be launched with
   `--proxy-server=$HTTPS_PROXY` (launch-mode REA scenarios don't use the proxy; connect mode does).

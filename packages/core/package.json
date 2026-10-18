@@ -1,0 +1,23 @@
+{
+  "name": "@profitlens/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./demo": "./src/demo/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@profitlens/finance": "workspace:*",
+    "@date-fns/tz": "1.5.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "5.0.5",
+    "@types/node": "22.20.5"
+  }
+}

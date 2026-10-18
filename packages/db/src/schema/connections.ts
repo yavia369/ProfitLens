@@ -1,7 +1,7 @@
 import { index, jsonb, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
-import { createdAt, id, tsz, updatedAt } from "./_columns.js";
-import { organization, store } from "./tenancy.js";
+import { user } from "./auth";
+import { createdAt, id, tsz, updatedAt } from "./_columns";
+import { organization, store } from "./tenancy";
 
 /**
  * Shopify app credentials. Several rows are allowed so each owned non-Plus store can use its own

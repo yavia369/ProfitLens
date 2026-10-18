@@ -1,8 +1,8 @@
 import { boolean, char, date, index, integer, jsonb, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
-import { createdAt, id, money, rate, tsz, updatedAt } from "./_columns.js";
-import { order } from "./orders.js";
-import { organization, store } from "./tenancy.js";
+import { user } from "./auth";
+import { createdAt, id, money, rate, tsz, updatedAt } from "./_columns";
+import { order } from "./orders";
+import { organization, store } from "./tenancy";
 
 export const shippingRuleType = pgEnum("shipping_rule_type", ["per_order", "per_item", "first_plus_additional", "tiered_quantity"]);
 

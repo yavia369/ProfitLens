@@ -1,10 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createDb, createPool, type Database } from "../src/client.js";
-import { runMigrations } from "../src/migrate.js";
-import { assertStoresInScope, resolveScope, TenantAccessError } from "../src/scope.js";
-import * as s from "../src/schema/index.js";
+import { createDb, createPool, type Database } from "../src/client";
+import { runMigrations } from "../src/migrate";
+import { assertStoresInScope, resolveScope, TenantAccessError } from "../src/scope";
+import * as s from "../src/schema/index";
 
 const url = process.env.TEST_DATABASE_URL ?? "postgres://profitlens:profitlens@localhost:5432/profitlens_test";
 

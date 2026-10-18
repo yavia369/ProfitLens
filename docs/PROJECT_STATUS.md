@@ -3,8 +3,8 @@
 _Last updated: 2026-10-18_
 
 ## Current phase
-**Phase 2 — Architecture & Database: COMPLETE, awaiting owner approval.** (Phase 1 accepted 2026-10-18.)
-Next: Phase 3 — Frontend Foundation (starts only after approval).
+**Phase 3 — Frontend Foundation: COMPLETE, awaiting owner approval.** (Phase 2 approved 2026-10-18.)
+Next: Phase 4 — Shopify Connection (needs owner approval to create/install the app on Luraflo).
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
@@ -26,14 +26,26 @@ Next: Phase 3 — Frontend Foundation (starts only after approval).
     tenant-scope helpers, 12 passing Postgres integration tests;
   - CI workflow (typecheck + tests with a Postgres service).
 
+- Phase 3:
+  - `packages/finance`: decimal money helpers, metric registry (single definition per metric), completeness,
+    store-timezone date presets/comparisons/buckets, default financial policy;
+  - `packages/core`: ReportingDataSource interface, ReportingService (dashboard + P&L payloads),
+    deterministic in-memory demo store (AUD, Australia/Sydney) that reconciles exactly;
+  - `apps/web`: Next.js 16 app — Better Auth (email/password, org bootstrap, rate limits), app shell,
+    design system (light/dark), dashboard, orders (+ calculation drawer), products, P&L, settings,
+    planned-phase pages, zod-validated report APIs (money as strings), CSV export;
+  - Playwright e2e (desktop + mobile) and CI e2e job.
+
 ## In progress
 - None.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
 
-## Known bugs
-- None known.
+## Known bugs / limitations
+- Dashboard card selection is per browser (localStorage), not per user yet (D-023).
+- Auth rate limiting uses in-memory storage (single instance only) (D-021).
+- `next start` warns because `output: "standalone"` is set; production will run `node .next/standalone/server.js` (Phase 9 Docker).
 
 ## External blockers / owner actions
 | # | Item | Needed by |
@@ -45,7 +57,9 @@ Next: Phase 3 — Frontend Foundation (starts only after approval).
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks (after approval)
-1. Phase 3: Next.js app shell, design system, dashboard/report components, demo data adapter, auth screens.
+1. Phase 4: Shopify Dev Dashboard app (owner), OAuth install flow, token encryption, bulk backfill, webhooks,
+   Sync Center, DB-backed ReportingDataSource for live stores (raw facts; profit engine is Phase 5).
 
 ## Test results
-- 2026-10-18: `@profitlens/db` integration tests 12/12 passed; typecheck passes (db, config). See `docs/TESTING.md`.
+- 2026-10-18: `pnpm test` 45/45 passed; `pnpm typecheck` passes; `next build` passes; Playwright 10/10 passed
+  (desktop + mobile). Details in `docs/TESTING.md`.

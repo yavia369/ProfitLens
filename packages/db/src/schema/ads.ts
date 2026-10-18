@@ -1,8 +1,8 @@
 import { bigint, boolean, char, date, index, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
-import { createdAt, id, money, updatedAt } from "./_columns.js";
-import { adConnection, adPlatform } from "./connections.js";
-import { organization, store } from "./tenancy.js";
+import { user } from "./auth";
+import { createdAt, id, money, updatedAt } from "./_columns";
+import { adConnection, adPlatform } from "./connections";
+import { organization, store } from "./tenancy";
 
 export const adAccount = pgTable(
   "ad_account",

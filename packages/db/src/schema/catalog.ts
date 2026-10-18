@@ -1,7 +1,7 @@
 import { boolean, char, date, index, integer, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
-import { createdAt, id, money, tsz, updatedAt } from "./_columns.js";
-import { store } from "./tenancy.js";
+import { user } from "./auth";
+import { createdAt, id, money, tsz, updatedAt } from "./_columns";
+import { store } from "./tenancy";
 
 export const product = pgTable(
   "product",

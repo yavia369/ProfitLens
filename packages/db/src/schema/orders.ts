@@ -1,7 +1,7 @@
 import { boolean, char, date, index, integer, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { createdAt, id, money, rate, tsz, updatedAt } from "./_columns.js";
-import { variant } from "./catalog.js";
-import { store } from "./tenancy.js";
+import { createdAt, id, money, rate, tsz, updatedAt } from "./_columns";
+import { variant } from "./catalog";
+import { store } from "./tenancy";
 
 /** Minimal customer record (PII-minimised: no name, email, phone or address). */
 export const customer = pgTable(

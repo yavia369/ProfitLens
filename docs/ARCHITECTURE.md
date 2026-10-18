@@ -36,9 +36,10 @@ packages/
   finance/        PURE calculation engine (no I/O): policy, revenue, COGS, fees, shipping, metrics, trace
   shopify/        GraphQL client (cost-aware throttling), bulk ops, mappers → normalized facts, webhook HMAC
   google-ads/     OAuth helpers, REST searchStream client, GAQL queries, mappers
-  core/           domain services orchestrating db + integrations + finance (used by web and worker)
-  ui/             design system (tokens, shadcn components, chart wrappers)
+  core/           domain services (reporting service, data-source interface, demo adapter) used by web and worker
 ```
+
+UI components and design tokens live in `apps/web/src/components` (D-025).
 
 **Dependency rule:** `finance` depends on nothing internal. `shopify` and `google-ads` depend only on
 `config`. `core` depends on db, finance and the integration packages. The apps depend on `core` and `ui`.

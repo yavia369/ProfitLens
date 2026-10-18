@@ -1,3 +1,3 @@
-export * from "./client.js";
-export * from "./scope.js";
-export * as schema from "./schema/index.js";
+export * from "./client";
+export * from "./scope";
+export * as schema from "./schema/index";

@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { Database } from "./client.js";
-import { membership, store, type memberRole } from "./schema/index.js";
+import type { Database } from "./client";
+import { membership, store, type memberRole } from "./schema/index";
 
 export type MemberRole = (typeof memberRole.enumValues)[number];
 

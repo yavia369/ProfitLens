@@ -1,6 +1,6 @@
 import { date, index, integer, jsonb, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { createdAt, id, money, tsz } from "./_columns.js";
-import { organization, store } from "./tenancy.js";
+import { createdAt, id, money, tsz } from "./_columns";
+import { organization, store } from "./tenancy";
 
 export const syncJobStatus = pgEnum("sync_job_status", ["queued", "running", "succeeded", "failed", "cancelled"]);
 

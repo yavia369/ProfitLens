@@ -1,6 +1,6 @@
 import { boolean, char, index, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { createdAt, id, rate, tsz, updatedAt } from "./_columns.js";
-import { user } from "./auth.js";
+import { createdAt, id, rate, tsz, updatedAt } from "./_columns";
+import { user } from "./auth";
 
 export const memberRole = pgEnum("member_role", ["owner", "admin", "editor", "viewer"]);
 

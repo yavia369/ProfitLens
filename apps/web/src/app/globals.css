@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * ProfitLens design tokens. Light-first; dark is a selected theme (not an automatic inversion).
+ * Chart series colours come from the validated data-viz reference palette (categorical order is fixed).
+ */
+:root {
+  --background: #f7f7f5;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --muted: #f1f1ee;
+  --muted-foreground: #5f5e59;
+  --subtle: #8a8983;
+  --border: #e4e4df;
+  --input: #d9d9d3;
+  --ring: #4338ca;
+  --primary: #4338ca;
+  --primary-foreground: #ffffff;
+  --primary-soft: #eceafd;
+  --accent: #f1f1ee;
+  --accent-foreground: #18181b;
+  --positive: #0f7b3f;
+  --positive-soft: #e3f3e9;
+  --negative: #c42b2b;
+  --negative-soft: #fbe7e7;
+  --warning: #8a5a00;
+  --warning-soft: #fdf1d8;
+  --demo: #6b4ee6;
+  --demo-soft: #efebfd;
+  --sidebar: #fbfbf9;
+
+  /* Charts */
+  --chart-surface: #fcfcfb;
+  --chart-grid: #ebebe6;
+  --chart-axis: #8a8983;
+  --series-1: #2a78d6; /* blue */
+  --series-2: #eb6834; /* orange */
+  --series-3: #1baf7a; /* aqua */
+  --series-4: #eda100; /* yellow */
+  --series-5: #e87ba4; /* magenta */
+  --series-6: #008300; /* green */
+  --series-7: #6250d6; /* violet */
+  --series-8: #e34948; /* red */
+}
+
+.dark {
+  --background: #111110;
+  --foreground: #f0efec;
+  --card: #1a1a19;
+  --card-foreground: #f0efec;
+  --popover: #1f1f1d;
+  --popover-foreground: #f0efec;
+  --muted: #232321;
+  --muted-foreground: #b4b3ab;
+  --subtle: #8d8c85;
+  --border: #2f2f2c;
+  --input: #3a3a36;
+  --ring: #8f89ff;
+  --primary: #8f89ff;
+  --primary-foreground: #121212;
+  --primary-soft: #26244a;
+  --accent: #262624;
+  --accent-foreground: #f0efec;
+  --positive: #4cc47f;
+  --positive-soft: #15301f;
+  --negative: #f07a7a;
+  --negative-soft: #3a1b1b;
+  --warning: #e9b949;
+  --warning-soft: #3a2f13;
+  --demo: #a594ff;
+  --demo-soft: #2a2350;
+  --sidebar: #151514;
+
+  --chart-surface: #1a1a19;
+  --chart-grid: #2b2b28;
+  --chart-axis: #8d8c85;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-demo: var(--demo);
+  --color-demo-soft: var(--demo-soft);
+  --color-sidebar: var(--sidebar);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Money and other figures always use tabular numerals so columns align. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -6,8 +6,7 @@
 >
 > Primary visual evidence: an owner-supplied screenshot (`user-provided-tp-dashboard.png`), an authorized screenshot
 > of the TrueProfit demo store dashboard supplied by the project owner (2026-10-18).
-> TrueProfit screenshots and images are **not committed** to this public repository (third-party
-> copyrighted material and branding); they are kept only in the research workspace.
+> Screenshots are in `screenshots/` (internal reference only; third-party material — never reuse as app assets).
 > Supplementary: official product-page images (see
 > `_raw/product-pages-notes.md`) and the TrueProfit MCP connector's report-config response.
 > The authenticated app (`app.trueprofit.io`) could not be opened from the research environment

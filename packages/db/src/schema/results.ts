@@ -1,7 +1,7 @@
 import { boolean, char, date, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uuid } from "drizzle-orm/pg-core";
-import { createdAt, id, money, tsz } from "./_columns.js";
-import { order } from "./orders.js";
-import { store } from "./tenancy.js";
+import { createdAt, id, money, tsz } from "./_columns";
+import { order } from "./orders";
+import { store } from "./tenancy";
 
 export const fxRate = pgTable(
   "fx_rate",
