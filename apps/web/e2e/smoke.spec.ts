@@ -87,6 +87,18 @@ test.describe.serial("auth and dashboard", () => {
     await expect(page.getByText("Taxes collected are a liability, never revenue.")).toBeVisible();
     await page.goto("/costs/products");
     await expect(page.getByText("Planned for phase 5")).toBeVisible();
+
+    await page.goto("/settings/sync");
+    await expect(page.getByText("No stores connected")).toBeVisible();
+    await page.goto("/settings/stores");
+    await expect(page.getByLabel("Client secret")).toHaveAttribute("type", "password");
+    // Server-side validation rejects a bad domain before anything reaches Shopify.
+    await page.getByLabel("Store domain").fill("not a shop");
+    await page.getByLabel("Client ID").fill("client-id-123");
+    await page.getByLabel("Client secret").fill("client-secret-123");
+    await page.getByRole("button", { name: "Connect store" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "myshopify.com domain" })).toBeVisible();
+    await shot(page, "stores-connect");
   });
 
   test("sign in, then sign out", async ({ page }) => {

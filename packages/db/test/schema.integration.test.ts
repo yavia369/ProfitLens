@@ -2,22 +2,14 @@ import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, createPool, type Database } from "../src/client";
-import { runMigrations } from "../src/migrate";
+import { freshTestDatabase } from "../src/testing";
 import { assertStoresInScope, resolveScope, TenantAccessError } from "../src/scope";
 import * as s from "../src/schema/index";
 
-const url = process.env.TEST_DATABASE_URL ?? "postgres://profitlens:profitlens@localhost:5432/profitlens_test";
+const baseUrl = process.env.TEST_DATABASE_URL ?? "postgres://profitlens:profitlens@localhost:5432/profitlens_test";
 
 let pool: pg.Pool;
 let db: Database;
-
-async function resetDatabase(): Promise<void> {
-  const admin = new pg.Client({ connectionString: url });
-  await admin.connect();
-  await admin.query("DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;");
-  await admin.end();
-  await runMigrations(url);
-}
 
 async function truncateAll(): Promise<void> {
   await db.execute(sql`TRUNCATE "organization", "user", "fx_rate" RESTART IDENTITY CASCADE`);
@@ -59,8 +51,7 @@ async function pgErrorCode(promise: Promise<unknown>): Promise<string | undefine
 }
 
 beforeAll(async () => {
-  await resetDatabase();
-  pool = createPool(url, 4);
+  pool = createPool(await freshTestDatabase(baseUrl, "db"), 4);
   db = createDb(pool);
 });
 

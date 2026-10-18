@@ -4,8 +4,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
-  transpilePackages: ["@profitlens/core", "@profitlens/finance", "@profitlens/db", "@profitlens/config"],
-  serverExternalPackages: ["pg"],
+  transpilePackages: ["@profitlens/core", "@profitlens/finance", "@profitlens/db", "@profitlens/config", "@profitlens/shopify"],
+  serverExternalPackages: ["pg", "pg-boss"],
   typedRoutes: true,
   async headers() {
     return [

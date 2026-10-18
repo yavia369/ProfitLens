@@ -13,7 +13,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { apiGet } from "@/lib/api-client";
+import { apiGet, isEnginePending } from "@/lib/api-client";
+import { EnginePending } from "./engine-pending";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { formatCount, formatMoney, formatPercent, signOf } from "@/lib/format";
 import { useReportParams } from "@/lib/use-report-params";
@@ -73,6 +74,7 @@ export function ProductsView() {
           Their COGS is counted as zero, so gross profit is overstated. Product cost editing arrives in phase 5.
         </Alert>
       ) : null}
+      {isEnginePending(q.error) ? <EnginePending message={q.error.message} /> : (
       <Card>
         <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center">
           <div className="relative w-full md:max-w-xs">
@@ -142,6 +144,7 @@ export function ProductsView() {
           </Table>
         )}
       </Card>
+      )}
     </div>
   );
 }

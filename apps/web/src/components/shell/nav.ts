@@ -52,7 +52,7 @@ export const NAV: readonly { readonly title: string; readonly items: readonly Na
     items: [
       { href: "/settings/stores", label: "Stores & integrations", icon: Store },
       { href: "/settings/policy", label: "Calculation policy", icon: Scale },
-      { href: "/settings/sync", label: "Sync center", icon: RefreshCw, plannedPhase: 4 },
+      { href: "/settings/sync", label: "Sync center", icon: RefreshCw },
     ],
   },
 ];

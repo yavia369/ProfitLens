@@ -53,12 +53,30 @@ integration design will be added in Phase 2.
 - **Meta:** Graph/Marketing API v26.0. `ads_read` with Standard Access is enough for your own ad accounts; other merchants' accounts need Advanced Access through App Review. Daily spend comes from `/act_{id}/insights?level=campaign&time_increment=1`.
 - **TikTok:** Marketing API v1.3 (reported). Requires a developer app, app review and authorization from each advertiser.
 
+## Shopify implementation (Phase 4)
+| Piece | Where | Notes |
+|---|---|---|
+| Admin GraphQL client | `packages/shopify/src/client.ts` | cost-based throttling from `extensions.cost`, retries on 429/5xx/THROTTLED, typed errors |
+| Auth | `packages/shopify/src/auth.ts`, `packages/core/src/shopify/connection.ts` | client credentials grant (D-026); client secret and access token stored AES-256-GCM encrypted with per-record context; token refreshed 5 min before expiry |
+| Scopes | `REQUIRED_SCOPES` | `read_orders, read_products, read_inventory, read_customers, read_returns, read_shopify_payments_payouts, read_shopify_payments_disputes`; `read_all_orders` optional (without it history is limited to 60 days and the UI says so) |
+| Backfill | `ShopifySyncService.backfill` | bulk operations for products (variants + inventory item unit cost) and orders (line items, agreements→sales, refunds→refund line items, transactions with fees) |
+| Incremental | `ShopifySyncService.incremental` | paged `updated_at` queries with a 5-min overlap; checkpoint `orders_synced_through` |
+| Idempotency | `packages/core/src/shopify/upsert.ts` | upserts by Shopify GID; an older `updatedAt` never overwrites a newer one; child rows replaced atomically per order |
+| Costs | `syncShopifyCostVersion` | Shopify `unitCost` snapshot becomes an effective-dated cost version (source `shopify`); manual versions are never touched; variants without a cost stay "missing" (never 0) |
+| Webhooks | `apps/web/src/app/api/webhooks/shopify/route.ts` → `handleShopifyWebhook` | HMAC on raw body, dedupe on webhook id, payload treated as a hint (authoritative re-fetch), compliance topics handled. Not reachable until deployed (D-029) |
+| Reconciliation | `reconcileOrderCounts` | Shopify `ordersCount` vs ours per store-local day; mismatches recorded as `reconciliation_issue` |
+| Worker | `apps/worker` | pg-boss queues and crons (D-027); CLI `pnpm --filter @profitlens/worker sync <connect|backfill|incremental|reconcile|status>` |
+
+**Still to verify live (UNKNOWN until run against Luraflo):** whether a Dev Dashboard app can be granted
+`read_all_orders`; exact GID formats of `SalesAgreement`/`Sale` in bulk output; how tax-inclusive pricing appears in
+sales amounts for an AUD store; `ordersCount` parity with Shopify admin.
+
 ## Integration strategy (Phase 2 decisions)
 Design details are in `ARCHITECTURE.md` §4 (Shopify) and §5 (Google Ads).
 
 | Integration | M1 approach | Owner prerequisites | Blocked until |
 |---|---|---|---|
-| Shopify | Dev Dashboard app (custom distribution) installed on Luraflo; auth code grant + expiring offline tokens; bulk backfill + webhooks + 15-min safety poll + nightly reconciliation | Create the app in Shopify Dev Dashboard (or let us guide it); approve install on Luraflo; request `read_all_orders` | Phase 4 approval |
+| Shopify | Dev Dashboard app (custom distribution) installed on Luraflo; client credentials grant for own stores (D-026), auth code grant + expiring offline tokens for other merchants later; bulk backfill + webhooks + 15-min safety poll + nightly reconciliation | Create the app in Shopify Dev Dashboard (or let us guide it); approve install on Luraflo; request `read_all_orders` | Phase 4 approval |
 | Google Ads | REST v26 searchStream; OAuth web client in the owner's Google Cloud project; Explorer access (auto) | Google Cloud project, OAuth consent screen (published), OAuth client ID/secret, redirect URI on the deployed domain | Phase 6 |
 | Manual ad spend | Always available (`ad_spend_daily.source = manual`) | — | — |
 | FX rates | Provider interface; default ECB daily reference rates (no key), fallback openexchangerates (key) | Allow the FX host on the network (blocked in this dev container) | Multi-currency live data |

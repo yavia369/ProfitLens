@@ -22,5 +22,16 @@ Implemented on the **demo data source only** (live data arrives with Phases 4–
 | Products: variant gross profit, filters (loss-making, missing cost), CSV export | Done (demo data) |
 | P&L: daily/weekly/monthly, expandable ad spend, memo lines, management-report label, CSV | Done (demo data) |
 | Settings: stores list, default calculation policy (read-only) | Done |
-| Costs pages, advertising, customers, sync center | Planned-state pages naming their phase (not functional) |
+| Costs pages, advertising, customers | Planned-state pages naming their phase (not functional) |
 
+
+## Phase 4 status (2026-10-18)
+| Feature | Status |
+|---|---|
+| Connect a Shopify store (UI form + CLI), credentials encrypted, scope check | Done, integration-tested with a fake Shopify; **live run pending credentials** |
+| Historical import (bulk), incremental sync (15 min), single-order refresh | Done, integration-tested; live run pending |
+| Shopify product costs → effective-dated cost versions | Done, tested |
+| Webhooks (orders, refunds, products, disputes, uninstall, GDPR) | Done, tested; live delivery blocked until deployment |
+| Daily order-count reconciliation | Done, tested |
+| Sync Center (status, scopes, history limit, counts, jobs, issues, latest orders, actions) | Done, e2e-tested (empty state) |
+| Profit reports for live stores | Deliberately blocked with an explanatory state until Phase 5 (D-028) |

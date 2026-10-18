@@ -1,4 +1,4 @@
-import { index, jsonb, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { createdAt, id, tsz, updatedAt } from "./_columns";
 import { organization, store } from "./tenancy";
@@ -38,6 +38,16 @@ export const storeConnection = pgTable("store_connection", {
   grantedScopes: text("granted_scopes").notNull(),
   status: connectionStatus("status").notNull().default("active"),
   lastError: text("last_error"),
+  /** Auth mode: client_credentials (store in the app's own org) or authorization_code (OAuth install). */
+  authMode: text("auth_mode").notNull().default("client_credentials"),
+  // Sync checkpoints (high-water marks of Shopify updated_at, minus an overlap window when used).
+  ordersSyncedThrough: tsz("orders_synced_through"),
+  productsSyncedThrough: tsz("products_synced_through"),
+  disputesSyncedAt: tsz("disputes_synced_at"),
+  backfillStartedAt: tsz("backfill_started_at"),
+  backfillCompletedAt: tsz("backfill_completed_at"),
+  /** Earliest order date imported; later than store creation when history is limited (no read_all_orders). */
+  historyStart: date("history_start", { mode: "string" }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

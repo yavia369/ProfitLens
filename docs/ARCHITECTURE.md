@@ -80,7 +80,7 @@ Each order result stores an `inputs_hash`, so recompute is skipped when nothing 
   (upgrade quarterly). Scopes: `read_orders, read_all_orders (when approved), read_products,
   read_inventory, read_customers, read_returns, read_shopify_payments_payouts,
   read_shopify_payments_disputes`.
-- **Auth:** authorization code grant with expiring offline tokens. Callback validation covers HMAC, `state`
+- **Auth:** (M1 own stores: client credentials grant, see D-026.) For other merchants: authorization code grant with expiring offline tokens. Callback validation covers HMAC, `state`
   (random, single-use, bound to the user session, 10-minute TTL) and the shop domain regex. Tokens are
   stored encrypted, and the access token is refreshed before expiry (it lasts 60 minutes; the refresh
   token rotates). Multiple app credentials are supported (`shopify_app` table), so each owned store

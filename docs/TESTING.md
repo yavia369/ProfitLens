@@ -14,7 +14,11 @@
 - Money assertions compare **strings** produced by `Decimal#toFixed` / exact decimal equality, never floats.
 - Every financial bug gets a regression fixture.
 - Test DB: `TEST_DATABASE_URL` (default `postgres://profitlens:profitlens@localhost:5432/profitlens_test`).
-  The suite drops and re-migrates the schema at start.
+  Each integration suite uses its own database `<name>_<suite>` (e.g. `profitlens_test_db`, `profitlens_test_core`),
+  created on demand and re-migrated at start (`freshTestDatabase` in `@profitlens/db/testing`), so suites can run in parallel.
+  The role needs `CREATEDB` (true for the local container role and the CI service user).
+- Shopify is never called from tests: `packages/core` integration tests drive the full sync through an in-memory fake of
+  the token, GraphQL, bulk and JSONL endpoints (`fakeShopify`).
 
 ## Current results
 | Date | Command | Result |
@@ -25,3 +29,7 @@
 | 2026-10-18 | `pnpm typecheck` | pass (5 packages) |
 | 2026-10-18 | `next build` (apps/web) | pass |
 | 2026-10-18 | `playwright test` (desktop 1440×900 + Pixel 7) against production build | 10/10 passed — auth redirect, sign-up → demo dashboard (banner, incompleteness warning, KPIs, chart), URL-persisted date preset, wrong password rejected, orders + order calculation drawer, products, P&L with expandable ad spend, policy page, planned-phase page, mobile navigation drawer, sign out |
+| 2026-10-18 (Phase 4) | `pnpm test` (all packages) | 81/81 passed — finance 17, shopify 21 (cost throttling/retries, HMAC (OAuth query + webhook), client-credential token parsing, bulk JSONL assembly, order/product mappers incl. store-timezone dating, agreements→sales ledger, refunds with restock type, transaction fees; bulk queries within connection limits; orphan JSONL lines rejected), core 25 (demo 10; crypto 4: round trip with unique ciphertexts, tamper/wrong-context rejection, key rotation, constant-time compare; Shopify sync integration 11 against real Postgres + fake Shopify: connect stores facts/encrypts secrets/creates policy + audit, missing scopes refused without persisting, same store blocked in a second workspace, idempotent bulk backfill of products and orders with all child facts, incremental ignores stale payloads, Shopify cost changes versioned by date without overriding manual costs, daily order-count reconciliation, stored token reuse, webhooks (signature check, dedupe, order refresh enqueue; uninstall + shop redaction), store-local day bounds across Sydney DST), db 12, web 6 |
+| 2026-10-18 (Phase 4) | `pnpm typecheck`, `next build` | pass |
+| 2026-10-18 (Phase 4) | `playwright test` | 10/10 passed — adds Sync Center empty state and the connect-store form (password field, server-side domain validation before any Shopify call) |
+| — | Live Shopify verification on Luraflo | **Not yet run**: waiting for `SHOPIFY_CLIENT_ID` / `SHOPIFY_CLIENT_SECRET` / `SHOPIFY_SHOP_DOMAIN` in the cloud environment |
