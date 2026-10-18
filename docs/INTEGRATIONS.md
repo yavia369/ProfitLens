@@ -52,3 +52,14 @@ integration design will be added in Phase 2.
 ## Meta / TikTok (unverified; primary docs blocked)
 - **Meta:** Graph/Marketing API v26.0. `ads_read` with Standard Access is enough for your own ad accounts; other merchants' accounts need Advanced Access through App Review. Daily spend comes from `/act_{id}/insights?level=campaign&time_increment=1`.
 - **TikTok:** Marketing API v1.3 (reported). Requires a developer app, app review and authorization from each advertiser.
+
+## Integration strategy (Phase 2 decisions)
+Design details are in `ARCHITECTURE.md` §4 (Shopify) and §5 (Google Ads).
+
+| Integration | M1 approach | Owner prerequisites | Blocked until |
+|---|---|---|---|
+| Shopify | Dev Dashboard app (custom distribution) installed on Luraflo; auth code grant + expiring offline tokens; bulk backfill + webhooks + 15-min safety poll + nightly reconciliation | Create the app in Shopify Dev Dashboard (or let us guide it); approve install on Luraflo; request `read_all_orders` | Phase 4 approval |
+| Google Ads | REST v26 searchStream; OAuth web client in the owner's Google Cloud project; Explorer access (auto) | Google Cloud project, OAuth consent screen (published), OAuth client ID/secret, redirect URI on the deployed domain | Phase 6 |
+| Manual ad spend | Always available (`ad_spend_daily.source = manual`) | — | — |
+| FX rates | Provider interface; default ECB daily reference rates (no key), fallback openexchangerates (key) | Allow the FX host on the network (blocked in this dev container) | Multi-currency live data |
+| Meta / TikTok | Phase 8 | Meta app (Standard Access for own ad accounts) / TikTok app review | Phase 8 |

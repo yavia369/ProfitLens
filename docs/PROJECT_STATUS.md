@@ -3,7 +3,8 @@
 _Last updated: 2026-10-18_
 
 ## Current phase
-**Phase 2 — Architecture & Database: IN PROGRESS** (Phase 1 accepted by owner 2026-10-18).
+**Phase 2 — Architecture & Database: COMPLETE, awaiting owner approval.** (Phase 1 accepted 2026-10-18.)
+Next: Phase 3 — Frontend Foundation (starts only after approval).
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
@@ -15,16 +16,24 @@ _Last updated: 2026-10-18_
   - REA network capture + screenshot of the public site.
 - Product requirements, MVP priorities, technical unknowns: `docs/PRODUCT_REQUIREMENTS.md`.
 
+- Phase 2:
+  - stack selected (ARCHITECTURE §1; decisions D-012…D-019);
+  - architecture, security model, deployment, roadmap: `docs/ARCHITECTURE.md`;
+  - financial calculation spec: `docs/FINANCIAL_MODEL.md`;
+  - integration strategy: `docs/INTEGRATIONS.md`;
+  - monorepo scaffold (pnpm + turbo, TS 6 strict), `packages/config` (zod env validation);
+  - `packages/db`: Drizzle schema (41 tables), migrations `0000_init` + `0001_integrity_constraints`,
+    tenant-scope helpers, 12 passing Postgres integration tests;
+  - CI workflow (typecheck + tests with a Postgres service).
+
 ## In progress
 - None.
 
 ## Pending (by phase)
-- Phase 2: stack selection, architecture, DB schema, financial calculation spec, integration
-  strategy, security model, deployment architecture, roadmap.
 - Phases 3–9 as per the master brief.
 
 ## Known bugs
-- None (no code yet).
+- None known.
 
 ## External blockers / owner actions
 | # | Item | Needed by |
@@ -36,7 +45,7 @@ _Last updated: 2026-10-18_
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks (after approval)
-1. Phase 2 architecture docs + Prisma schema + financial model spec.
+1. Phase 3: Next.js app shell, design system, dashboard/report components, demo data adapter, auth screens.
 
 ## Test results
-- No code yet.
+- 2026-10-18: `@profitlens/db` integration tests 12/12 passed; typecheck passes (db, config). See `docs/TESTING.md`.

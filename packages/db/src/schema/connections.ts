@@ -1,0 +1,91 @@
+import { index, jsonb, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { user } from "./auth.js";
+import { createdAt, id, tsz, updatedAt } from "./_columns.js";
+import { organization, store } from "./tenancy.js";
+
+/**
+ * Shopify app credentials. Several rows are allowed so each owned non-Plus store can use its own
+ * custom-distribution app, while a future public app is a single shared row.
+ */
+export const shopifyApp = pgTable("shopify_app", {
+  id: id(),
+  /** null = platform-wide app (public distribution); otherwise owned by one organization. */
+  organizationId: uuid("organization_id").references(() => organization.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  clientId: text("client_id").notNull().unique(),
+  clientSecretEnc: text("client_secret_enc").notNull(),
+  distribution: text("distribution").notNull(), // "custom" | "public"
+  scopes: text("scopes").notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const connectionStatus = pgEnum("connection_status", ["active", "needs_reauth", "revoked", "error"]);
+
+export const storeConnection = pgTable("store_connection", {
+  id: id(),
+  storeId: uuid("store_id")
+    .notNull()
+    .unique()
+    .references(() => store.id, { onDelete: "cascade" }),
+  shopifyAppId: uuid("shopify_app_id")
+    .notNull()
+    .references(() => shopifyApp.id),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  accessTokenExpiresAt: tsz("access_token_expires_at"),
+  refreshTokenEnc: text("refresh_token_enc"),
+  refreshTokenExpiresAt: tsz("refresh_token_expires_at"),
+  grantedScopes: text("granted_scopes").notNull(),
+  status: connectionStatus("status").notNull().default("active"),
+  lastError: text("last_error"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/** Single-use OAuth state (Shopify + Google). Only the SHA-256 of the state value is stored. */
+export const oauthState = pgTable(
+  "oauth_state",
+  {
+    id: id(),
+    stateHash: text("state_hash").notNull().unique(),
+    provider: text("provider").notNull(), // "shopify" | "google_ads"
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** PKCE verifier (encrypted) for providers that use it. */
+    codeVerifierEnc: text("code_verifier_enc"),
+    context: jsonb("context").$type<Record<string, string>>().notNull().default({}),
+    expiresAt: tsz("expires_at").notNull(),
+    consumedAt: tsz("consumed_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("oauth_state_expires_idx").on(t.expiresAt)],
+);
+
+export const adPlatform = pgEnum("ad_platform", ["google_ads", "meta", "tiktok", "manual"]);
+
+export const adConnection = pgTable(
+  "ad_connection",
+  {
+    id: id(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    platform: adPlatform("platform").notNull(),
+    /** Provider user identity (e.g. Google account subject) used to dedupe reconnects. */
+    externalUserId: text("external_user_id"),
+    displayName: text("display_name"),
+    refreshTokenEnc: text("refresh_token_enc"),
+    accessTokenEnc: text("access_token_enc"),
+    accessTokenExpiresAt: tsz("access_token_expires_at"),
+    scopes: text("scopes"),
+    status: connectionStatus("status").notNull().default("active"),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique("ad_connection_org_platform_user_uq").on(t.organizationId, t.platform, t.externalUserId)],
+);
