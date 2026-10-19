@@ -46,3 +46,12 @@ describe("P&L exports", () => {
     expect(t.rows.every((r) => r.cells.length === 1)).toBe(true);
   });
 });
+
+describe("store comparison export", () => {
+  it("names the consolidation currency and says when amounts were converted", async () => {
+    const cmp = (await service.storeComparison([{ storeId: "demo", range }]))!;
+    const t = comparisonTable({ ...cmp, consolidated: { currency: "USD", converted: true } });
+    expect(t.columns.at(-1)).toBe("Consolidated (USD)");
+    expect(t.notes.join(" ")).toContain("Consolidated in USD at each day's stored exchange rate.");
+  });
+});

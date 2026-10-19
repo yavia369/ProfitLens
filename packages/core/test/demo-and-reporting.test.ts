@@ -122,7 +122,7 @@ describe("reporting service", () => {
       { storeId: "demo", range: a },
       { storeId: "twin", range: b },
     ]))!;
-    expect(same.consolidated).toEqual({ currency: DEMO_STORE.currency });
+    expect(same.consolidated).toEqual({ currency: DEMO_STORE.currency, converted: false });
     const pnlA = (await service.profitAndLoss("demo", a, "month"))!;
     for (const row of same.rows) {
       expect(row.values[0], row.key).toBe(pnlA.rows.find((r) => r.key === row.key)!.total);
@@ -137,6 +137,22 @@ describe("reporting service", () => {
     ]))!;
     expect(mixed.consolidated.currency).toBeNull();
     expect(mixed.rows.every((r) => r.total === null)).toBe(true);
+
+    // With rates, the EUR twin is converted day by day into AUD (EUR→AUD 1.65 on every day of September).
+    const rates = Array.from({ length: 30 }, (_, i) => ({ date: `2026-09-${String(i + 1).padStart(2, "0")}`, base: "EUR", quote: "AUD", rate: "1.65" }));
+    const withRates = (list: typeof rates): ReportingDataSource => {
+      const base = twin("EUR");
+      return new Proxy(base, { get: (t, prop, r) => (prop === "getFxRates" ? async () => list : Reflect.get(t, prop, r)) });
+    };
+    const fx = (await new ReportingService(withRates(rates)).storeComparison([{ storeId: "demo", range: a }, { storeId: "twin", range: a }], "AUD"))!;
+    expect(fx.consolidated).toEqual({ currency: "AUD", converted: true });
+    const rev = fx.rows.find((r) => r.key === "revenue")!;
+    expect(dec(rev.total!).toFixed(4)).toBe(dec(rev.values[0]!).times("2.65").toFixed(4)); // AUD + EUR × 1.65 (same data)
+    // A gap longer than the 7-day fallback leaves no consolidated total, with the reason; never 1:1.
+    const gap = rates.filter((r) => r.date < "2026-09-10" || r.date > "2026-09-20");
+    const noFx = (await new ReportingService(withRates(gap)).storeComparison([{ storeId: "demo", range: a }, { storeId: "twin", range: a }], "AUD"))!;
+    expect(noFx.consolidated).toMatchObject({ currency: null, reason: expect.stringContaining("EUR→AUD on 4 days") });
+    expect(noFx.rows.every((r) => r.total === null)).toBe(true);
     expect(await service.storeComparison([{ storeId: "demo", range: a }, { storeId: "nope", range: a }])).toBeNull();
   });
 

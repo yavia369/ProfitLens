@@ -7,6 +7,7 @@ import {
   toMoneyString,
   ZERO,
   type CampaignSpendRow,
+  type FxRateRow,
   type CustomerActivityRow,
   type UtmRow,
   type DailyComponents,
@@ -207,6 +208,11 @@ export class DemoDataSource implements ReportingDataSource {
       })),
       { platform: "meta", accountName: "Manual ad spend", campaignId: "manual:demo-meta", campaignName: "All Meta spend (manual entries)", source: "manual", attributable: false, spend: meta.spend, platformValue: null, clicks: null, otherTimezone: false },
     ];
+  }
+
+  /** The demo store is single-currency and never consolidated with live stores, so it holds no rates. */
+  async getFxRates(_currencies: readonly string[], _range: DateRange): Promise<FxRateRow[]> {
+    return [];
   }
 
   async getUtmPerformance(storeId: string, range: DateRange): Promise<UtmRow[]> {

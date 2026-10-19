@@ -5,7 +5,8 @@ import {
   dec,
   Decimal,
   eachDay,
-  fxLookupFrom,
+  fxConverter,
+  FX_FALLBACK_DAYS,
   toMoneyString,
   worstStatus,
   ZERO,
@@ -17,10 +18,11 @@ import {
   type LocalDate,
   type ExpenseInput,
   type FxLookup,
+  type FxRateRow,
   type UtmRow,
 } from "@profitlens/finance";
 import { schema, type Database } from "@profitlens/db";
-import { and, asc, between, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, between, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type {
   AdChannelSpend,
   BreakdownLine,
@@ -116,17 +118,20 @@ export class DbReportingDataSource implements ReportingDataSource {
     };
   }
 
+  async getFxRates(currencies: readonly string[], range: DateRange): Promise<FxRateRow[]> {
+    const list = [...new Set(currencies)];
+    if (list.length === 0) return [];
+    // Pairs touching any requested currency, so crosses through a pivot (ECB: EUR) are included.
+    const rows = await this.db
+      .select({ date: schema.fxRate.date, base: schema.fxRate.base, quote: schema.fxRate.quote, rate: schema.fxRate.rate })
+      .from(schema.fxRate)
+      .where(and(between(schema.fxRate.date, addDays(range.start, -FX_FALLBACK_DAYS), range.end), or(inArray(schema.fxRate.base, list), inArray(schema.fxRate.quote, list))));
+    return rows;
+  }
+
   private async fxFor(currency: string, currencies: readonly string[], range: DateRange): Promise<FxLookup> {
     const foreign = [...new Set(currencies)].filter((c) => c !== currency);
-    const rates: Record<string, Record<string, string>> = {};
-    if (foreign.length) {
-      const rows = await this.db
-        .select()
-        .from(schema.fxRate)
-        .where(and(inArray(schema.fxRate.base, foreign), eq(schema.fxRate.quote, currency), between(schema.fxRate.date, addDays(range.start, -7), range.end)));
-      for (const r of rows) (rates[r.base] ??= {})[r.date] = r.rate;
-    }
-    return fxLookupFrom(rates, currency);
+    return fxConverter(foreign.length ? await this.getFxRates([...foreign, currency], range) : [], currency);
   }
 
   /**

@@ -1,4 +1,4 @@
-import type { CampaignSpendRow, CustomerActivityRow, DailyComponents, DateRange, LocalDate, MoneyString, UtmRow } from "@profitlens/finance";
+import type { CampaignSpendRow, CustomerActivityRow, DailyComponents, DateRange, FxRateRow, LocalDate, MoneyString, UtmRow } from "@profitlens/finance";
 
 export type CostStatus = "actual" | "rule" | "manual" | "estimated" | "missing";
 
@@ -136,4 +136,6 @@ export interface ReportingDataSource {
   getCampaignSpend(storeId: string, range: DateRange): Promise<CampaignSpendRow[]>;
   /** Event-dated revenue and order profit in the range grouped by the orders' last-visit UTM parameters. */
   getUtmPerformance(storeId: string, range: DateRange): Promise<UtmRow[]>;
+  /** Stored exchange rates touching `currencies` from 7 days before the range to its end (for fxConverter). */
+  getFxRates(currencies: readonly string[], range: DateRange): Promise<FxRateRow[]>;
 }

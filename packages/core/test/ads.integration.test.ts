@@ -240,4 +240,27 @@ describe("manual ad spend", () => {
     const channels = await new DbReportingDataSource(db, scope.organizationId).getAdSpendByChannel(storeId, { start: "2026-10-01", end: "2026-10-31" });
     expect(channels[0]).toMatchObject({ channel: "google_ads", timezoneApproximation: true });
   });
+
+  it("converts foreign-currency spend with stored ECB-style rates (EUR pivot, 7-day fallback) and counts days without a rate", async () => {
+    const { scope, storeId } = await seed("Owner");
+    const [usd] = await db.insert(schema.adAccount).values({ organizationId: scope.organizationId, platform: "meta", externalId: "manual:usd", name: "USD", currency: "USD", timezone: "Australia/Sydney", storeId }).returning();
+    await db.insert(schema.adSpendDaily).values([
+      { adAccountId: usd!.id, level: "account", entityExternalId: "manual:usd", date: "2026-10-05", source: "manual", spend: "110" }, // Monday, own rate
+      { adAccountId: usd!.id, level: "account", entityExternalId: "manual:usd", date: "2026-10-11", source: "manual", spend: "110" }, // Sunday → Friday's rate
+      { adAccountId: usd!.id, level: "account", entityExternalId: "manual:usd", date: "2026-10-30", source: "manual", spend: "50" }, // no rate within 7 days
+    ]);
+    await db.insert(schema.fxRate).values([
+      { date: "2026-10-05", base: "EUR", quote: "USD", rate: "1.100000000000", source: "ecb" },
+      { date: "2026-10-05", base: "EUR", quote: "AUD", rate: "1.650000000000", source: "ecb" },
+      { date: "2026-10-09", base: "EUR", quote: "USD", rate: "1.100000000000", source: "ecb" },
+      { date: "2026-10-09", base: "EUR", quote: "AUD", rate: "1.760000000000", source: "ecb" },
+    ]);
+    const source = new DbReportingDataSource(db, scope.organizationId);
+    const days = await source.getDailyComponents(storeId, { start: "2026-10-01", end: "2026-10-31" });
+    const day = (d: string) => days.find((x) => x.localDate === d)!;
+    expect(dec(day("2026-10-05").adSpend).toFixed(2)).toBe("165.00"); // 110 / 1.10 × 1.65
+    expect(dec(day("2026-10-11").adSpend).toFixed(2)).toBe("176.00"); // Friday 9 Oct: 110 / 1.10 × 1.76
+    expect(dec(day("2026-10-30").adSpend).isZero()).toBe(true); // unknown, not converted 1:1 …
+    expect(day("2026-10-30").fxIssues).toBe(1); // … and flagged
+  });
 });

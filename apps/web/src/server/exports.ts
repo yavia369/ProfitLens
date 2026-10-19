@@ -42,9 +42,14 @@ export function comparisonTable(r: StoreComparisonReport): ExportTable {
   return {
     title: "Profit & loss — store comparison",
     subtitle: r.stores.map((s) => `${s.name}: ${s.range.start} – ${s.range.end} (${s.currency}, ${s.timezone})`).join(" · "),
-    notes: [BASIS, ...(r.consolidated.currency === null ? [r.consolidated.reason] : ["Each store's days follow its own time zone."])],
+    notes: [
+      BASIS,
+      ...(r.consolidated.currency === null
+        ? [r.consolidated.reason]
+        : [`Each store's days follow its own time zone.${r.consolidated.converted ? ` Consolidated in ${r.consolidated.currency} at each day's stored exchange rate.` : ""}`]),
+    ],
     currency: r.consolidated.currency ?? r.stores[0]?.currency ?? "USD",
-    columns: [...r.stores.map((s) => `${s.name} (${s.currency})`), ...(consolidated ? ["Consolidated"] : [])],
+    columns: [...r.stores.map((s) => `${s.name} (${s.currency})`), ...(consolidated ? [`Consolidated (${r.consolidated.currency})`] : [])],
     rows: r.rows.map((row) => ({ label: row.label, kind: row.kind, depth: 0, cells: [...row.values, ...(consolidated ? [row.total] : [])] })),
   };
 }

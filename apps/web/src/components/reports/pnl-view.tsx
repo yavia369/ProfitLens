@@ -37,11 +37,14 @@ export function PnlView() {
   const liveStores = (stores.data?.stores ?? []).filter((s) => !s.isDemo);
   const canCompare = liveStores.length >= 2 && !current?.isDemo;
   const [view, setView] = useState<"period" | "stores">("period");
+  const [consolidateIn, setConsolidateIn] = useState<string | null>(null);
+  const liveCurrencies = [...new Set(liveStores.slice(0, 10).map((s) => s.currency))].sort();
   const byStore = canCompare && view === "stores";
   const range = new URLSearchParams(qs);
   range.delete("store");
   const storesQuery = `stores=${liveStores.slice(0, 10).map((s) => s.id).join(",")}&${range.toString()}`;
-  const exportHref = (format: "xlsx" | "pdf") => `/api/reports/pnl/export?format=${format}&${byStore ? `view=stores&${storesQuery}` : qs}`;
+  const storesExportQuery = consolidateIn ? `${storesQuery}&currency=${consolidateIn}` : storesQuery;
+  const exportHref = (format: "xlsx" | "pdf") => `/api/reports/pnl/export?format=${format}&${byStore ? `view=stores&${storesExportQuery}` : qs}`;
   const r = q.data;
   const currency = r?.store.currency ?? "USD";
 
@@ -98,7 +101,7 @@ export function PnlView() {
         Revenue is event-dated (refunds on the day they happen), taxes and gift-card sales are excluded from revenue, and costs follow this
         store&apos;s calculation policy. Use it for operating decisions; your accountant&apos;s books remain the source of record.
       </Alert>
-      {byStore ? <StoreComparison query={storesQuery} /> : (
+      {byStore ? <StoreComparison query={storesQuery} currencies={liveCurrencies} currency={consolidateIn} onCurrency={setConsolidateIn} /> : (
       <Card className="overflow-hidden">
         {!r ? (
           <div className="flex flex-col gap-2 p-4">

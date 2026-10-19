@@ -1,5 +1,9 @@
 import {
   AD_ALLOCATION_METHODS,
+  convertComponents,
+  FX_FALLBACK_DAYS,
+  fxConverter,
+  hasMoney,
   addTotals,
   allocateByShare,
   eachDay,
@@ -513,18 +517,52 @@ export class ReportingService {
    * P&L side by side for several stores (each over the range in its own time zone, FINANCIAL_MODEL §1), plus a
    * consolidated total column when the stores share a currency. Demo stores must not be mixed in (callers check).
    */
-  async storeComparison(stores: readonly { storeId: string; range: DateRange }[]): Promise<StoreComparisonReport | null> {
+  /**
+   * P&L side by side for several stores (each over the range in its own time zone, FINANCIAL_MODEL §1), plus a
+   * consolidated total. Stores in one currency are simply added; otherwise every day of every store is converted
+   * into `consolidateIn` with that day's stored rate (7-day fallback). Any day with money but no rate means no
+   * consolidated total, never a 1:1 guess. Demo stores must not be mixed in (callers check).
+   */
+  async storeComparison(stores: readonly { storeId: string; range: DateRange }[], consolidateIn?: string): Promise<StoreComparisonReport | null> {
     const loaded = await Promise.all(
       stores.map(async ({ storeId, range }) => {
         const store = await this.source.getStore(storeId);
-        return store ? { store, range, totals: sumComponents(await this.source.getDailyComponents(storeId, range)) } : null;
+        return store ? { store, range, days: await this.source.getDailyComponents(storeId, range) } : null;
       }),
     );
     if (loaded.some((x) => x === null) || loaded.length === 0) return null;
     const list = loaded as NonNullable<(typeof loaded)[number]>[];
-    const currencies = new Set(list.map((x) => x.store.currency));
-    const sameCurrency = currencies.size === 1;
-    const all = sameCurrency ? addTotals(list.map((x) => x.totals)) : null;
+    const totals = list.map((x) => sumComponents(x.days));
+    const currencies = [...new Set(list.map((x) => x.store.currency))];
+    const target = currencies.length === 1 ? currencies[0]! : (consolidateIn ?? null);
+
+    let all: ComponentTotals | null = null;
+    let consolidated: StoreComparisonReport["consolidated"];
+    if (currencies.length === 1) {
+      all = addTotals(totals);
+      consolidated = { currency: target!, converted: false };
+    } else if (!target) {
+      consolidated = { currency: null, reason: `Stores report in different currencies (${currencies.join(", ")}); choose a currency to consolidate in.` };
+    } else {
+      const span = { start: list.map((x) => x.range.start).sort()[0]!, end: list.map((x) => x.range.end).sort().at(-1)! };
+      const fx = fxConverter(await this.source.getFxRates([...currencies, target], span), target);
+      const missing = new Map<string, number>();
+      const converted: DailyComponents[] = [];
+      for (const x of list) {
+        for (const d of x.days) {
+          const rate = fx(x.store.currency, d.localDate);
+          if (rate) converted.push(convertComponents(d, rate));
+          else if (hasMoney(d)) missing.set(x.store.currency, (missing.get(x.store.currency) ?? 0) + 1);
+        }
+      }
+      if (missing.size === 0) {
+        all = sumComponents(converted);
+        consolidated = { currency: target, converted: true };
+      } else {
+        const what = [...missing].map(([c, n]) => `${c}→${target} on ${n} day${n === 1 ? "" : "s"}`).join(", ");
+        consolidated = { currency: null, reason: `No exchange rate for ${what} (rates are not imported yet or are older than ${FX_FALLBACK_DAYS} days), so there is no consolidated total.` };
+      }
+    }
     return {
       stores: list.map((x) => ({ ...x.store, range: x.range })),
       rows: PNL_LINES.map((line) => ({
@@ -532,12 +570,10 @@ export class ReportingService {
         label: line.label,
         kind: line.kind,
         ...(line.metric ? { metric: line.metric } : {}),
-        values: list.map((x) => s(line.value(x.totals))),
+        values: totals.map((t) => s(line.value(t))),
         total: all ? s(line.value(all)) : null,
       })),
-      consolidated: sameCurrency
-        ? { currency: [...currencies][0]! }
-        : { currency: null, reason: `Stores report in different currencies (${[...currencies].join(", ")}); a consolidated total needs exchange rates, which are not available yet.` },
+      consolidated,
       basis: "management",
     };
   }
@@ -588,8 +624,8 @@ export class ReportingService {
 export interface StoreComparisonReport {
   readonly stores: readonly (StoreSummary & { readonly range: DateRange })[];
   readonly rows: readonly Omit<PnlRow, "children">[];
-  /** Consolidated column: only when every store reports in the same currency (no FX conversion yet, B2). */
-  readonly consolidated: { readonly currency: string } | { readonly currency: null; readonly reason: string };
+  /** Consolidated column: added up in one currency, or converted day by day with stored rates (`converted`). */
+  readonly consolidated: { readonly currency: string; readonly converted: boolean } | { readonly currency: null; readonly reason: string };
   readonly basis: "management";
 }
 
