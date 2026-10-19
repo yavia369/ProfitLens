@@ -1,4 +1,5 @@
 import { AdsSyncService, connectGoogleAdsServiceAccount, listAdAccounts, mapAdAccount } from "@profitlens/core/ads";
+import { importEcbRates } from "@profitlens/core/fx";
 import { ProfitService } from "@profitlens/core/profit";
 import { connectStoreWithClientCredentials, ShopifySyncService } from "@profitlens/core/shopify";
 import { resolveScope, schema, type Database } from "@profitlens/db";
@@ -17,6 +18,7 @@ import { buildDeps, log } from "./deps";
  *   pnpm --filter @profitlens/worker sync ads-accounts <user-email>
  *   pnpm --filter @profitlens/worker sync ads-map <user-email> <adAccountId> <storeId|none>
  *   pnpm --filter @profitlens/worker sync ads-sync <adAccountId> [--full]
+ *   pnpm --filter @profitlens/worker sync fx-import [--full]          # ECB reference rates (3 years on first run)
  */
 async function main() {
   const [command, arg, arg2] = process.argv.slice(2);
@@ -75,6 +77,9 @@ async function main() {
     }
     case "ads-sync":
       log.info(await new AdsSyncService(deps).syncAccount(required(arg), { full: arg2 === "--full" }), "ads sync done");
+      break;
+    case "fx-import":
+      log.info(await importEcbRates(deps.db, (url) => fetch(url), { today: new Date().toISOString().slice(0, 10), full: arg === "--full" }), "fx import done");
       break;
     case "recalc":
       log.info(await new ProfitService(deps.db).recalcStore(required(arg), { force: arg2 === "--force" }), "recalc done");

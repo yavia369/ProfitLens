@@ -1,4 +1,5 @@
 import { AdsSyncService } from "@profitlens/core/ads";
+import { importEcbRates } from "@profitlens/core/fx";
 import { QUEUES, type AdsJob, type OrderJob, type StoreJob } from "@profitlens/core/jobs";
 import { ProfitService } from "@profitlens/core/profit";
 import { ShopifySyncService } from "@profitlens/core/shopify";
@@ -9,7 +10,7 @@ import { buildDeps, log } from "./deps";
 
 /**
  * Background worker: Shopify backfill, incremental sync (every 15 min), webhook-triggered order refresh,
- * profit recalculation, Google Ads spend (every 6 hours) and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
+ * profit recalculation, Google Ads spend (every 6 hours), ECB exchange rates (daily) and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
  */
 async function main() {
   const deps = buildDeps();
@@ -61,7 +62,13 @@ async function main() {
   await boss.work(QUEUES.reconcileAll, async () => {
     for (const storeId of await activeStores()) await boss.send(QUEUES.reconcile, { storeId }, { singletonKey: storeId });
   });
+  await boss.work(QUEUES.fxImport, async () => {
+    const result = await importEcbRates(deps.db, (url) => fetch(url), { today: new Date().toISOString().slice(0, 10) });
+    log.info({ queue: QUEUES.fxImport, result }, "fx import finished");
+  });
   await boss.schedule(QUEUES.incrementalAll, "*/15 * * * *");
+  // Exchange rates: ECB publishes around 16:00 CET (14:00–15:00 UTC); a second run catches late publications.
+  await boss.schedule(QUEUES.fxImport, "25 15,21 * * *", null, { tz: "UTC" });
   await boss.schedule(QUEUES.reconcileAll, "15 2 * * *", null, { tz: "UTC" });
   // Ad spend: every 6 hours (each run re-reads the last 3 days to pick up restatements).
   await boss.schedule(QUEUES.adsSyncAll, "40 */6 * * *", null, { tz: "UTC" });

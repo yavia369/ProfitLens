@@ -11,7 +11,8 @@
     "./jobs": "./src/jobs/index.ts",
     "./profit": "./src/profit/index.ts",
     "./ads": "./src/ads/index.ts",
-    "./team": "./src/team/index.ts"
+    "./team": "./src/team/index.ts",
+    "./fx": "./src/fx/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

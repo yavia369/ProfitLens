@@ -13,6 +13,8 @@ export const QUEUES = {
   /** Cron fan-out: enqueue an incremental sync for every active store. */
   incrementalAll: "shopify.incremental-all",
   reconcileAll: "shopify.reconcile-all",
+  /** ECB reference rates into fx_rate (daily, after ECB publishes around 16:00 CET). */
+  fxImport: "fx.ecb.import",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

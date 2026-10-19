@@ -54,6 +54,10 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 4. To reload Luraflo: sign up a local user in the web app, then `pnpm --filter @profitlens/worker sync connect <email>`,
    `… sync backfill <storeId>` (also computes profit), `… sync status`. `… sync recalc <storeId> [--force]` recomputes results.
 5. Migrations now go up to `0005_team_weight_shipping` (invitations, weight-tiered shipping).
+6. In this container Node's `fetch` only uses the egress proxy with `NODE_USE_ENV_PROXY=1` (e.g.
+   `NODE_USE_ENV_PROXY=1 pnpm --filter @profitlens/worker sync fx-import`). Production has direct egress.
+7. Exchange rates: `… sync fx-import` (first run: 3 years of ECB history; later: the 90-day file). The worker
+   imports daily at 15:25 and 21:25 UTC.
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
