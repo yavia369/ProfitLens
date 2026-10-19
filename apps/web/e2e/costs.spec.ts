@@ -171,4 +171,27 @@ test("configure costs for a connected store and see profit recalculated", async 
   await page.reload();
   await expect(page.getByLabel("Store for E2E Google Ads")).toHaveValue(storeId);
   await expect(page.getByLabel("Sync")).toBeChecked();
+
+  // P&L: a second live store in the same currency enables the side-by-side view with a consolidated column.
+  const client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(
+      `insert into store (organization_id, shop_domain, name, currency, iana_timezone, status)
+       select organization_id, 'e2e-second-' || substr(md5(random()::text), 1, 8) || '.myshopify.com', 'E2E Outlet', 'AUD', $2, 'active' from store where id = $1`,
+      [storeId, TZ],
+    );
+  } finally {
+    await client.end();
+  }
+  await page.goto(`/pnl?${q}&preset=last_7_days`);
+  await page.getByLabel("View").selectOption("stores");
+  await expect(page.getByRole("columnheader", { name: "Consolidated" })).toBeVisible();
+  const revenueRow = page.getByRole("row").filter({ hasText: /^Revenue/ }).first();
+  await expect(revenueRow.getByRole("cell", { name: "$180.00" })).toHaveCount(2); // E2E Boutique and the consolidated total
+  const [xlsx] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Excel" }).click()]);
+  expect(xlsx.suggestedFilename()).toMatch(/\.xlsx$/);
+  const pdf = await page.request.get((await page.getByRole("link", { name: "PDF" }).getAttribute("href"))!);
+  expect(pdf.headers()["content-type"]).toBe("application/pdf");
+  expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
 });

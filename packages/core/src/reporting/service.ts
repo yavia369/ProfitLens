@@ -1,6 +1,8 @@
 import {
+  addTotals,
   bucketKey,
   comparisonRange,
+  profitBridge,
   completeness,
   computeMetrics,
   dec,
@@ -59,6 +61,12 @@ export interface DashboardPayload {
   readonly series: readonly SeriesPoint[];
   readonly costBreakdown: readonly { readonly key: string; readonly label: string; readonly amount: string }[];
   readonly adChannels: readonly AdChannelSpend[];
+  /** What changed net profit vs the comparison period (null without a comparison). */
+  readonly bridge: {
+    readonly start: string;
+    readonly end: string;
+    readonly steps: readonly { readonly key: string; readonly label: string; readonly effect: string; readonly description: string }[];
+  } | null;
   readonly generatedAt: string;
 }
 
@@ -97,8 +105,10 @@ export class ReportingService {
       this.source.getAdSpendByChannel(storeId, range),
     ]);
     const totals = sumComponents(days);
+    const prevTotals = comparison ? sumComponents(prevDays) : null;
     const current = computeMetrics(totals);
-    const previous = comparison ? computeMetrics(sumComponents(prevDays)) : null;
+    const previous = prevTotals ? computeMetrics(prevTotals) : null;
+    const b = prevTotals ? profitBridge(totals, prevTotals) : null;
 
     const kpis = {} as Record<MetricKey, KpiValue>;
     for (const k of METRIC_KEYS) {
@@ -149,7 +159,43 @@ export class ReportingService {
         .filter((b) => !dec(b.amount).isZero())
         .sort((a, b) => dec(b.amount).comparedTo(dec(a.amount))),
       adChannels,
+      bridge: b
+        ? { start: toMoneyString(b.start), end: toMoneyString(b.end), steps: b.steps.map((x) => ({ key: x.key, label: x.label, effect: toMoneyString(x.effect), description: x.description })) }
+        : null,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * P&L side by side for several stores (each over the range in its own time zone, FINANCIAL_MODEL §1), plus a
+   * consolidated total column when the stores share a currency. Demo stores must not be mixed in (callers check).
+   */
+  async storeComparison(stores: readonly { storeId: string; range: DateRange }[]): Promise<StoreComparisonReport | null> {
+    const loaded = await Promise.all(
+      stores.map(async ({ storeId, range }) => {
+        const store = await this.source.getStore(storeId);
+        return store ? { store, range, totals: sumComponents(await this.source.getDailyComponents(storeId, range)) } : null;
+      }),
+    );
+    if (loaded.some((x) => x === null) || loaded.length === 0) return null;
+    const list = loaded as NonNullable<(typeof loaded)[number]>[];
+    const currencies = new Set(list.map((x) => x.store.currency));
+    const sameCurrency = currencies.size === 1;
+    const all = sameCurrency ? addTotals(list.map((x) => x.totals)) : null;
+    return {
+      stores: list.map((x) => ({ ...x.store, range: x.range })),
+      rows: PNL_LINES.map((line) => ({
+        key: line.key,
+        label: line.label,
+        kind: line.kind,
+        ...(line.metric ? { metric: line.metric } : {}),
+        values: list.map((x) => s(line.value(x.totals))),
+        total: all ? s(line.value(all)) : null,
+      })),
+      consolidated: sameCurrency
+        ? { currency: [...currencies][0]! }
+        : { currency: null, reason: `Stores report in different currencies (${[...currencies].join(", ")}); a consolidated total needs exchange rates, which are not available yet.` },
+      basis: "management",
     };
   }
 
@@ -194,6 +240,14 @@ export class ReportingService {
       basis: "management",
     };
   }
+}
+
+export interface StoreComparisonReport {
+  readonly stores: readonly (StoreSummary & { readonly range: DateRange })[];
+  readonly rows: readonly Omit<PnlRow, "children">[];
+  /** Consolidated column: only when every store reports in the same currency (no FX conversion yet, B2). */
+  readonly consolidated: { readonly currency: string } | { readonly currency: null; readonly reason: string };
+  readonly basis: "management";
 }
 
 export interface PnlRow {

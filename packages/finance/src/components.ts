@@ -79,3 +79,14 @@ export function dailyComponents(
   for (const k of COUNT_COMPONENTS) row[k] = values[k] ?? 0;
   return row as DailyComponents;
 }
+
+/** Adds component totals that are already summed (e.g. stores reporting in the same currency). */
+export function addTotals(list: readonly ComponentTotals[]): ComponentTotals {
+  const money = Object.fromEntries(MONEY_COMPONENTS.map((k) => [k, ZERO])) as Record<MoneyComponent, Decimal>;
+  const counts = Object.fromEntries(COUNT_COMPONENTS.map((k) => [k, 0])) as Record<CountComponent, number>;
+  for (const t of list) {
+    for (const k of MONEY_COMPONENTS) money[k] = money[k].plus(t[k]);
+    for (const k of COUNT_COMPONENTS) counts[k] += t[k];
+  }
+  return { ...money, ...counts };
+}

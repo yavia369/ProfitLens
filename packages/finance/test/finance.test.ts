@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addMonths,
+  bridgeTotal,
+  profitBridge,
   bucketKey,
   comparisonRange,
   completeness,
@@ -175,5 +177,36 @@ describe("dates (store timezone)", () => {
     expect(bucketKey("2026-10-12", "week")).toBe("2026-10-12");
     expect(bucketKey("2026-10-18", "month")).toBe("2026-10-01");
     expect(addMonths("2026-01-31", 1)).toBe("2026-02-28");
+  });
+});
+
+describe("profit variance bridge", () => {
+  const t = (v: Parameters<typeof dailyComponents>[1]) => sumComponents([dailyComponents("2026-10-01", v)]);
+  it("splits revenue into volume and order value; steps sum exactly to the change in net profit", () => {
+    const prev = t({ revenue: "1000", ordersCount: 10, cogs: "400", transactionFees: "30", adSpend: "200", fixedExpenses: "100" });
+    const cur = t({ revenue: "1320", ordersCount: 12, cogs: "530", transactionFees: "40", adSpend: "260", fixedExpenses: "100" });
+    const b = profitBridge(cur, prev);
+    expect(b.start.toFixed(2)).toBe("270.00");
+    expect(b.end.toFixed(2)).toBe("390.00");
+    const step = (k: string) => b.steps.find((s) => s.key === k)?.effect.toFixed(2);
+    expect(step("volume")).toBe("200.00"); // 2 more orders × 100 AOV
+    expect(step("orderValue")).toBe("120.00"); // 12 × (110 − 100)
+    expect(step("cogs")).toBe("-130.00");
+    expect(step("fees")).toBe("-10.00");
+    expect(step("adSpend")).toBe("-60.00");
+    expect(step("fixedExpenses")).toBeUndefined(); // unchanged lines are omitted
+    expect(bridgeTotal(b).eq(b.end.minus(b.start))).toBe(true);
+  });
+
+  it("puts the whole revenue change into volume when a period has no orders", () => {
+    const b = profitBridge(t({ revenue: "500", ordersCount: 5 }), t({}));
+    expect(b.steps.find((s) => s.key === "volume")!.effect.toFixed(2)).toBe("500.00");
+    expect(b.steps.find((s) => s.key === "orderValue")).toBeUndefined();
+    expect(bridgeTotal(b).eq(b.end.minus(b.start))).toBe(true);
+  });
+
+  it("stays exact with awkward averages (no rounding before display)", () => {
+    const b = profitBridge(t({ revenue: "100", ordersCount: 3 }), t({ revenue: "100", ordersCount: 7 }));
+    expect(bridgeTotal(b).eq(b.end.minus(b.start))).toBe(true);
   });
 });

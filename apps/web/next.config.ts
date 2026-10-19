@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ["@profitlens/core", "@profitlens/finance", "@profitlens/db", "@profitlens/config", "@profitlens/shopify"],
-  serverExternalPackages: ["pg", "pg-boss"],
+  serverExternalPackages: ["pg", "pg-boss", "pdfkit", "exceljs"],
   typedRoutes: true,
   async headers() {
     return [

@@ -1,7 +1,7 @@
 import { dec, sum, sumComponents, ZERO } from "@profitlens/finance";
 import { describe, expect, it } from "vitest";
 import { DemoDataSource, DEMO_STORE } from "../src/demo/index";
-import { ReportingService } from "../src/index";
+import { ReportingService, type DateRange, type ReportingDataSource } from "../src/index";
 
 // Fixed clock: 2026-10-18 14:00 Sydney (AEDT, UTC+11).
 const NOW = new Date("2026-10-18T03:00:00Z");
@@ -94,6 +94,50 @@ describe("reporting service", () => {
     const ads = pnl.rows.find((r) => r.key === "adSpend")!;
     expect(sum(ads.children.map((c) => dec(c.total!))).toFixed(6)).toBe(dec(ads.total!).toFixed(6));
     expect(pnl.basis).toBe("management");
+  });
+
+  it("explains the change in net profit with a bridge whose steps sum exactly", async () => {
+    const d = (await service.dashboard("demo", { start: "2026-10-01", end: "2026-10-17" }, "previous_period"))!;
+    const b = d.bridge!;
+    expect(dec(b.end).toFixed(6)).toBe(dec(d.kpis.netProfit.value!).toFixed(6));
+    expect(sum(b.steps.map((s) => dec(s.effect))).toFixed(6)).toBe(dec(b.end).minus(dec(b.start)).toFixed(6));
+    expect(b.steps[0]!.key).toBe("volume");
+    expect((await service.dashboard("demo", { start: "2026-10-01", end: "2026-10-17" }, "none"))!.bridge).toBeNull();
+  });
+
+  it("compares stores side by side and consolidates only same-currency stores", async () => {
+    // A second store aliasing the demo data, in the same currency or another one.
+    const twin = (currency: string): ReportingDataSource =>
+      new Proxy(source, {
+        get(target, prop, receiver) {
+          if (prop === "getStore")
+            return async (id: string) => (id === "twin" ? { ...(await target.getStore("demo"))!, id: "twin", name: "Twin", currency } : target.getStore(id));
+          if (prop === "getDailyComponents") return (id: string, r: DateRange) => target.getDailyComponents(id === "twin" ? "demo" : id, r);
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+    const a = { start: "2026-09-01", end: "2026-09-30" };
+    const b = { start: "2026-08-01", end: "2026-08-31" };
+    const same = (await new ReportingService(twin(DEMO_STORE.currency)).storeComparison([
+      { storeId: "demo", range: a },
+      { storeId: "twin", range: b },
+    ]))!;
+    expect(same.consolidated).toEqual({ currency: DEMO_STORE.currency });
+    const pnlA = (await service.profitAndLoss("demo", a, "month"))!;
+    for (const row of same.rows) {
+      expect(row.values[0], row.key).toBe(pnlA.rows.find((r) => r.key === row.key)!.total);
+      if (row.kind !== "ratio") expect(dec(row.total!).toFixed(6), row.key).toBe(dec(row.values[0]!).plus(dec(row.values[1]!)).toFixed(6));
+    }
+    const margin = same.rows.find((r) => r.kind === "ratio")!;
+    expect(margin.total).not.toBeNull(); // recomputed from the summed totals, never an average of ratios
+
+    const mixed = (await new ReportingService(twin("EUR")).storeComparison([
+      { storeId: "demo", range: a },
+      { storeId: "twin", range: a },
+    ]))!;
+    expect(mixed.consolidated.currency).toBeNull();
+    expect(mixed.rows.every((r) => r.total === null)).toBe(true);
+    expect(await service.storeComparison([{ storeId: "demo", range: a }, { storeId: "nope", range: a }])).toBeNull();
   });
 
   it("returns null for unknown stores", async () => {

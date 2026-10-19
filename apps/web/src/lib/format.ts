@@ -19,7 +19,8 @@ export function formatMoney(
   const fmt = new Intl.NumberFormat(LOCALE, {
     style: "currency",
     currency,
-    currencySign: "accounting",
+    // An explicit sign display means a signed change (+/−), not a ledger amount in parentheses.
+    currencySign: opts.signDisplay ? "standard" : "accounting",
     notation: opts.compact ? "compact" : "standard",
     maximumFractionDigits: opts.compact ? 1 : 2,
     minimumFractionDigits: opts.compact ? 0 : 2,

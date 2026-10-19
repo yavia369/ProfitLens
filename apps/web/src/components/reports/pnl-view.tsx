@@ -15,6 +15,7 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { formatDate, formatMoney, formatPercent } from "@/lib/format";
 import { useReportParams } from "@/lib/use-report-params";
 import { cn } from "@/lib/utils";
+import { StoreComparison } from "./store-comparison";
 
 function columnLabel(start: string, end: string, granularity: PnlReport["granularity"]): string {
   if (granularity === "month") return formatDate(start, { month: "short", year: "numeric" });
@@ -33,6 +34,14 @@ export function PnlView() {
   const q = useQuery({ queryKey: ["pnl", qs], queryFn: () => apiGet<PnlReport>(`/api/reports/pnl?${qs}`), placeholderData: (prev) => prev });
   const stores = useQuery({ queryKey: ["stores"], queryFn: () => apiGet<{ stores: StoreSummary[] }>("/api/stores") });
   const current = stores.data?.stores.find((s) => s.id === params.store);
+  const liveStores = (stores.data?.stores ?? []).filter((s) => !s.isDemo);
+  const canCompare = liveStores.length >= 2 && !current?.isDemo;
+  const [view, setView] = useState<"period" | "stores">("period");
+  const byStore = canCompare && view === "stores";
+  const range = new URLSearchParams(qs);
+  range.delete("store");
+  const storesQuery = `stores=${liveStores.slice(0, 10).map((s) => s.id).join(",")}&${range.toString()}`;
+  const exportHref = (format: "xlsx" | "pdf") => `/api/reports/pnl/export?format=${format}&${byStore ? `view=stores&${storesQuery}` : qs}`;
   const r = q.data;
   const currency = r?.store.currency ?? "USD";
 
@@ -51,6 +60,13 @@ export function PnlView() {
   return (
     <div>
       <ReportToolbar title="Profit & loss" description="Operational P&L built from the same ledger as the dashboard." resolved={r?.range} showCompare={false}>
+        {canCompare ? (
+          <NativeSelect aria-label="View" value={view} onChange={(e) => setView(e.target.value as "period" | "stores")}>
+            <option value="period">By period</option>
+            <option value="stores">By store</option>
+          </NativeSelect>
+        ) : null}
+        {byStore ? null : (
         <NativeSelect
           aria-label="Columns"
           value={params.granularity ?? r?.granularity ?? "month"}
@@ -60,8 +76,21 @@ export function PnlView() {
           <option value="week">Weekly</option>
           <option value="month">Monthly</option>
         </NativeSelect>
-        <Button variant="outline" onClick={exportCsv} disabled={!r}>
-          <Download /> CSV
+        )}
+        {byStore ? null : (
+          <Button variant="outline" onClick={exportCsv} disabled={!r}>
+            <Download /> CSV
+          </Button>
+        )}
+        <Button asChild variant="outline">
+          <a href={exportHref("xlsx")}>
+            <Download /> Excel
+          </a>
+        </Button>
+        <Button asChild variant="outline">
+          <a href={exportHref("pdf")}>
+            <Download /> PDF
+          </a>
         </Button>
       </ReportToolbar>
       {current?.isDemo ? <DemoBanner /> : null}
@@ -69,6 +98,7 @@ export function PnlView() {
         Revenue is event-dated (refunds on the day they happen), taxes and gift-card sales are excluded from revenue, and costs follow this
         store&apos;s calculation policy. Use it for operating decisions; your accountant&apos;s books remain the source of record.
       </Alert>
+      {byStore ? <StoreComparison query={storesQuery} /> : (
       <Card className="overflow-hidden">
         {!r ? (
           <div className="flex flex-col gap-2 p-4">
@@ -152,7 +182,7 @@ export function PnlView() {
           </div>
         )}
       </Card>
-      <p className="mt-3 text-xs text-subtle">PDF and XLSX export arrive in phase 7.</p>
+      )}
     </div>
   );
 }

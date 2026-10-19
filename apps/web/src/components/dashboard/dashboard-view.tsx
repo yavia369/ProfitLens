@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProfitBridgeChart } from "@/components/charts/profit-bridge";
 import { apiGet } from "@/lib/api-client";
 import { formatMoney, formatPercent, formatRatio } from "@/lib/format";
 import { COMPARE_LABELS } from "@/lib/report-params";
@@ -214,6 +215,11 @@ export function DashboardView() {
             }))}
           />
           <OrdersChart series={data.series} granularity={data.granularity} />
+          {data.bridge ? (
+            <div className="xl:col-span-3">
+              <ProfitBridgeChart bridge={data.bridge} currency={data.store.currency} />
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-3">

@@ -13,6 +13,8 @@ describe("presentation formatting", () => {
     expect(formatMoney("10450.77", "AUD", { asCost: true })).toBe("($10,450.77)");
     expect(formatMoney("0.000000", "AUD", { asCost: true })).toBe("$0.00");
     expect(formatMoney("-5.00", "AUD")).toBe("($5.00)");
+    expect(formatMoney("-5.00", "AUD", { signDisplay: "exceptZero" })).toBe("-$5.00"); // a signed change, not a ledger amount
+    expect(formatMoney("5", "AUD", { signDisplay: "exceptZero" })).toBe("+$5.00");
   });
 
   it("renders null (undefined ratios) as an em dash, never 0", () => {
