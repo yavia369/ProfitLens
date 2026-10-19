@@ -3,8 +3,19 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 6 — Google Ads: CODE COMPLETE, live verification pending owner setup (B4).** Phase 5 approved 2026-10-19.
+**Phase 7 — Advanced analytics: IN PROGRESS** (started 2026-10-19). Phase 6 approved by the owner on 2026-10-19
+with the live Google Ads check deferred until the owner completes B4 (resume steps below still apply).
 `SHOPIFY_*` are cloud environment variables. **Never ask for these or Google credentials in chat, never print them.**
+
+Phase 7 plan (PRODUCT_REQUIREMENTS M2):
+1. Profit variance bridge (what changed net profit vs the comparison period).
+2. P&L: store comparison, consolidated multi-store view (FX-converted where rates exist), XLSX and PDF export.
+3. Customer analytics: new vs returning, repeat rate, observed LTV, monthly cohorts, blended CAC.
+4. Ads profitability page: per campaign spend, platform-reported value/ROAS, break-even ROAS, and modeled
+   (Shopify UTM last-touch) revenue and contribution — always labelled.
+5. Product detail view and explicit, labelled ad-allocation methods.
+6. Team: members, roles (owner/admin/editor/viewer), invitations.
+7. Shipping: weight-tiered rules (zones = country sets, already supported).
 
 ## Resume Phase 6 (new session, after the owner adds the Google key)
 1. Fresh-container setup below (Postgres, install, `.env.local`, migrate — migrations up to `0004_ads_sync`).
@@ -84,7 +95,7 @@ _Last updated: 2026-10-19_
   Costs → Ad spend page, worker queues + CLI, migration `0004_ads_sync`, setup guide `docs/GOOGLE_ADS_SETUP.md`.
 
 ## In progress
-- Phase 6 live verification (blocked on B4).
+- Phase 7 (see plan above). Phase 6 live verification still pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -112,7 +123,7 @@ _Last updated: 2026-10-19_
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Owner: B4 (Google Ads access, `docs/GOOGLE_ADS_SETUP.md`), then "Continue Phase 6" for live verification; B8 (Luraflo costs).
+1. Phase 7 (in progress). Owner: B4 (Google Ads access; then the live check), B8 (Luraflo costs).
 2. Phase 7 (after approval): advanced analytics.
 
 ## Test results
