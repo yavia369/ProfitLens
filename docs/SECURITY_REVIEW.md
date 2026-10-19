@@ -21,7 +21,7 @@ ProfitLens serves merchants other than the owner).
 | 10 | Sessions & CSRF | Cookies, cross-site requests | **OK**: Better Auth httpOnly cookies, `Secure` in production, SameSite=Lax; server actions are origin-checked by Next.js; route handlers that change state are only Better Auth's and the HMAC webhook |
 | 11 | Redirects | Open redirect after sign-in | **OK**: `safe-next.ts` accepts only relative invite paths (Phase 7) |
 | 12 | Brute force | Sign-in / sign-up | **Accepted**: Better Auth rate limits (5 sign-ups, 10 sign-ins per minute per IP) use in-memory storage, correct for the single web instance in D-053; move to a shared store before running several web instances (D-021) |
-| 13 | Container | Image hardening | **OK**: runs as the non-root `node` user, no secrets in layers (env at run time; the optional build CA is a BuildKit secret mount), no TypeScript tooling at runtime |
+| 13 | Container | Image hardening | **OK**: runs as the non-root `node` user, no secrets in layers (env at run time), no TypeScript tooling at runtime |
 | 14 | PII | Customer data | **OK**: customers stored as Shopify GID, country, first-order date and order count only; compliance webhooks (data request, customer redact, shop redact) handled and audited |
 | 15 | Health endpoint | Information exposure | **Accepted**: `/api/health` returns database latency, worker heartbeat age and queue counts; no tenant, store or credential data |
 

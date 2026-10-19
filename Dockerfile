@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # One image, three roles (ARCHITECTURE §7, D-019): `web` (Next.js standalone server), `worker` (pg-boss jobs)
 # and `migrate` (release step). `cli …` runs the operator CLI. No secrets are baked in: everything comes from the
 # platform's environment at run time (see docs/DEPLOYMENT.md).
@@ -8,9 +7,8 @@ ARG NODE_IMAGE=node:22.22.0-bookworm-slim
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1 COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-# Optional build secret `ca` (an extra CA bundle) for builds behind a TLS-intercepting proxy; unused otherwise.
-RUN --mount=type=secret,id=ca,required=false \
-    if [ -f /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; corepack enable && corepack prepare pnpm@10.28.0 --activate
+# No BuildKit mounts: Railway's builder accepts only service-scoped cache mounts, and this file serves several services.
+RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
@@ -22,9 +20,7 @@ COPY packages/google-ads/package.json packages/google-ads/
 COPY packages/meta-ads/package.json packages/meta-ads/
 COPY packages/payments/package.json packages/payments/
 COPY packages/shopify/package.json packages/shopify/
-RUN --mount=type=secret,id=ca,required=false --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    if [ -f /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
 COPY . .
 ARG APP_VERSION=dev
 RUN pnpm --filter @profitlens/web build && pnpm --filter @profitlens/worker bundle
