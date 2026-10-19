@@ -10,10 +10,6 @@ export class ApiError extends Error {
   }
 }
 
-export function isEnginePending(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.code === "profit_engine_pending";
-}
-
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!res.ok) {

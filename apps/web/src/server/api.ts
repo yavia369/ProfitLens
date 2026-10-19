@@ -33,14 +33,6 @@ export function jsonError(status: number, message: string, details?: unknown): N
   return NextResponse.json({ error: message, ...(details ? { details } : {}) }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-/** 409 for live stores whose profit calculation (phase 5) isn't available yet — never fake figures. */
-export function engineNotReady(storeName: string): NextResponse {
-  return NextResponse.json(
-    { error: `${storeName}: data is imported, but profit calculations arrive in phase 5.`, code: "profit_engine_pending" },
-    { status: 409, headers: { "Cache-Control": "no-store" } },
-  );
-}
-
 export function json<T>(body: T): NextResponse {
   return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
 }
@@ -55,10 +47,8 @@ export async function reportContext(request: Request): Promise<ReportContext | N
   const q = parsed.data;
   const access = await reportingFor(session.scope, q.store);
   if (!access) return jsonError(404, "Store not found");
-  if (access.kind === "engine_pending") return engineNotReady(access.store.name);
-  const reporting = access;
-  const store = await reporting.source.getStore(q.store);
+  const store = await access.source.getStore(q.store);
   if (!store) return jsonError(404, "Store not found");
   const range = q.preset === "custom" ? { start: q.start!, end: q.end! } : resolvePreset(q.preset, store.timezone);
-  return { session, store, source: reporting.source, service: reporting.service, range, compare: q.compare, granularity: q.granularity, searchParams };
+  return { session, store, source: access.source, service: access.service, range, compare: q.compare, granularity: q.granularity, searchParams };
 }

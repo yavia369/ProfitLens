@@ -17,6 +17,8 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     if (v) carry.set(k, v);
   }
   const qs = carry.toString();
+  // Cost and settings pages are per store: carry only the store.
+  const storeQs = sp.get("store") ? new URLSearchParams({ store: sp.get("store")! }).toString() : "";
 
   return (
     <nav aria-label="Main" className="flex flex-col gap-5 px-3 py-4">
@@ -26,7 +28,8 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           <ul className="flex flex-col gap-0.5">
             {group.items.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const href = (item.report && qs ? `${item.href}?${qs}` : item.href) as Route;
+              const query = item.report ? qs : item.storeScoped ? storeQs : "";
+              const href = (query ? `${item.href}?${query}` : item.href) as Route;
               return (
                 <li key={item.href}>
                   <Link

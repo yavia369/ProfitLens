@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
+import { StoresProvider } from "./stores-context";
 
 export function AppShell({
   stores,
@@ -16,6 +17,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   return (
+    <StoresProvider stores={stores}>
     <div className="min-h-dvh">
       <Suspense>
         <Sidebar />
@@ -27,5 +29,6 @@ export function AppShell({
         <main className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-8">{children}</main>
       </div>
     </div>
+    </StoresProvider>
   );
 }

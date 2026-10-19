@@ -12,8 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { apiGet, isEnginePending } from "@/lib/api-client";
-import { EnginePending } from "./engine-pending";
+import { apiGet } from "@/lib/api-client";
 import { formatCount, formatDate, formatMoney, formatPercent, signOf } from "@/lib/format";
 import { useReportParams } from "@/lib/use-report-params";
 import { cn } from "@/lib/utils";
@@ -82,7 +81,6 @@ export function OrdersView() {
     <div>
       <ReportToolbar title="Orders" description="Profit per order before advertising. Click an order for its full calculation." resolved={data?.range} showCompare={false} />
       {current?.isDemo ? <DemoBanner /> : null}
-      {isEnginePending(q.error) ? <EnginePending message={q.error.message} /> : (
       <Card>
         <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-xs">
@@ -158,7 +156,6 @@ export function OrdersView() {
           </div>
         ) : null}
       </Card>
-      )}
       <OrderDrawer storeId={params.store} orderId={openOrder} currency={currency} timezone={current?.timezone ?? "UTC"} onClose={() => setOpenOrder(null)} />
     </div>
   );

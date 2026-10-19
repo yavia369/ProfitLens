@@ -24,8 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet, isEnginePending } from "@/lib/api-client";
-import { EnginePending } from "@/components/reports/engine-pending";
+import { apiGet } from "@/lib/api-client";
 import { formatMoney, formatPercent, formatRatio } from "@/lib/format";
 import { COMPARE_LABELS } from "@/lib/report-params";
 import { useReportParams } from "@/lib/use-report-params";
@@ -141,9 +140,8 @@ export function DashboardView() {
 
       {data?.store.isDemo ? <DemoBanner /> : null}
 
-      {isEnginePending(query.error) ? <EnginePending message={query.error.message} /> : null}
 
-      {query.isError && !data && !isEnginePending(query.error) ? (
+      {query.isError && !data ? (
         <Card>
           <EmptyState icon={AlertCircle} title="Couldn't load the dashboard" action={<Button variant="outline" onClick={() => query.refetch()}>Try again</Button>}>
             {(query.error as Error).message}
@@ -153,8 +151,6 @@ export function DashboardView() {
 
       {data ? <CompletenessNotice data={data} /> : null}
 
-      {isEnginePending(query.error) ? null : (
-      <>
       <Card className="mb-4">
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-5 pt-5 md:grid-cols-3 xl:grid-cols-5">
           {HERO.map((k) =>
@@ -224,8 +220,6 @@ export function DashboardView() {
           <Skeleton className="h-80 xl:col-span-2" />
           <Skeleton className="h-80" />
         </div>
-      )}
-      </>
       )}
     </div>
   );

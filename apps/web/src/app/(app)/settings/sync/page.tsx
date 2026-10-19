@@ -154,7 +154,7 @@ export default async function SyncCenterPage() {
             {s.latestOrders.length ? (
               <section>
                 <h3 className="mb-1 text-sm font-semibold">Latest imported orders</h3>
-                <p className="mb-2 text-xs text-muted-foreground">Raw Shopify totals for verification — profit is not calculated until phase 5.</p>
+                <p className="mb-2 text-xs text-muted-foreground">Raw Shopify totals for verification. Profit per order is on the Orders page.</p>
                 <Table>
                   <THead><TR><TH>Order</TH><TH>Date</TH><TH>Financial status</TH><TH className="text-right">Shopify total</TH><TH className="text-right">Ledger entries</TH></TR></THead>
                   <TBody>

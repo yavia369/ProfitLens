@@ -4,6 +4,7 @@ import type { ProductRow, StoreSummary } from "@profitlens/core";
 import type { DateRange } from "@profitlens/finance";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Boxes, Download, Search } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { DemoBanner, ReportToolbar } from "@/components/shell/report-toolbar";
 import { Alert } from "@/components/ui/alert";
@@ -13,8 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { apiGet, isEnginePending } from "@/lib/api-client";
-import { EnginePending } from "./engine-pending";
+import { apiGet } from "@/lib/api-client";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { formatCount, formatMoney, formatPercent, signOf } from "@/lib/format";
 import { useReportParams } from "@/lib/use-report-params";
@@ -71,10 +71,14 @@ export function ProductsView() {
       {current?.isDemo ? <DemoBanner /> : null}
       {missing > 0 ? (
         <Alert tone="warning" title={`${missing} variant${missing === 1 ? "" : "s"} sold in this period have no cost configured`} className="mb-4">
-          Their COGS is counted as zero, so gross profit is overstated. Product cost editing arrives in phase 5.
+          Their COGS is counted as zero, so gross profit is overstated.{" "}
+          {current && !current.isDemo ? (
+            <Link href={`/costs/products?store=${encodeURIComponent(current.id)}&missing=1`} className="font-medium underline underline-offset-2">
+              Set product costs
+            </Link>
+          ) : null}
         </Alert>
       ) : null}
-      {isEnginePending(q.error) ? <EnginePending message={q.error.message} /> : (
       <Card>
         <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center">
           <div className="relative w-full md:max-w-xs">
@@ -144,7 +148,6 @@ export function ProductsView() {
           </Table>
         )}
       </Card>
-      )}
     </div>
   );
 }

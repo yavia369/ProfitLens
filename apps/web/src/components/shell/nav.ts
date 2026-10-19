@@ -22,6 +22,8 @@ export interface NavItem {
   readonly icon: LucideIcon;
   /** Pages that use the shared report filters (store/date/compare) keep them in the URL when navigating. */
   readonly report?: boolean;
+  /** Per-store pages (costs, policy, sync) keep the selected store in the URL. */
+  readonly storeScoped?: boolean;
   /** Phase in which the page becomes functional, shown as a badge until then. */
   readonly plannedPhase?: number;
 }
@@ -41,17 +43,17 @@ export const NAV: readonly { readonly title: string; readonly items: readonly Na
   {
     title: "Costs",
     items: [
-      { href: "/costs/products", label: "Product costs", icon: BadgeDollarSign, plannedPhase: 5 },
-      { href: "/costs/shipping", label: "Shipping", icon: Truck, plannedPhase: 5 },
-      { href: "/costs/fees", label: "Transaction fees", icon: CreditCard, plannedPhase: 5 },
-      { href: "/costs/expenses", label: "Expenses", icon: Receipt, plannedPhase: 5 },
+      { href: "/costs/products", label: "Product costs", icon: BadgeDollarSign, storeScoped: true },
+      { href: "/costs/shipping", label: "Shipping", icon: Truck, storeScoped: true },
+      { href: "/costs/fees", label: "Transaction fees", icon: CreditCard, storeScoped: true },
+      { href: "/costs/expenses", label: "Expenses", icon: Receipt, storeScoped: true },
     ],
   },
   {
     title: "Settings",
     items: [
       { href: "/settings/stores", label: "Stores & integrations", icon: Store },
-      { href: "/settings/policy", label: "Calculation policy", icon: Scale },
+      { href: "/settings/policy", label: "Calculation policy", icon: Scale, storeScoped: true },
       { href: "/settings/sync", label: "Sync center", icon: RefreshCw },
     ],
   },

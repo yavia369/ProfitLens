@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { engineNotReady, json, jsonError } from "@/server/api";
+import { json, jsonError } from "@/server/api";
 import { reportingFor } from "@/server/reporting";
 import { getAppSession } from "@/server/session";
 
@@ -10,7 +10,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!store.success) return jsonError(400, "store is required");
   const reporting = await reportingFor(session.scope, store.data);
   if (!reporting) return jsonError(404, "Store not found");
-  if (reporting.kind === "engine_pending") return engineNotReady(reporting.store.name);
   const { id } = await params;
   const order = await reporting.source.getOrder(store.data, id);
   return order ? json(order) : jsonError(404, "Order not found");

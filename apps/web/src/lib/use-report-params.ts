@@ -3,6 +3,7 @@
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
+import { useDefaultStoreId } from "@/components/shell/stores-context";
 import { DEFAULT_PARAMS, isCompare, isPreset, toSearchParams, type ReportParams } from "./report-params";
 
 /** Report filters live in the URL so views are shareable and survive reloads. */
@@ -10,13 +11,14 @@ export function useReportParams(): [ReportParams, (patch: Partial<ReportParams>)
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const defaultStore = useDefaultStoreId();
 
   const params = useMemo<ReportParams>(() => {
     const preset = sp.get("preset");
     const compare = sp.get("compare");
     const granularity = sp.get("granularity");
     const p: ReportParams = {
-      store: sp.get("store") ?? DEFAULT_PARAMS.store,
+      store: sp.get("store") ?? defaultStore,
       preset: preset === "custom" || isPreset(preset) ? preset : DEFAULT_PARAMS.preset,
       compare: isCompare(compare) ? compare : DEFAULT_PARAMS.compare,
     };
@@ -30,7 +32,7 @@ export function useReportParams(): [ReportParams, (patch: Partial<ReportParams>)
     }
     if (granularity === "day" || granularity === "week" || granularity === "month") p.granularity = granularity;
     return p;
-  }, [sp]);
+  }, [sp, defaultStore]);
 
   const update = useCallback(
     (patch: Partial<ReportParams>) => {

@@ -10,8 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet, isEnginePending } from "@/lib/api-client";
-import { EnginePending } from "./engine-pending";
+import { apiGet } from "@/lib/api-client";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { formatDate, formatMoney, formatPercent } from "@/lib/format";
 import { useReportParams } from "@/lib/use-report-params";
@@ -66,8 +65,6 @@ export function PnlView() {
         </Button>
       </ReportToolbar>
       {current?.isDemo ? <DemoBanner /> : null}
-      {isEnginePending(q.error) ? <EnginePending message={q.error.message} /> : (
-      <>
       <Alert title="Management report — not an accounting statement" className="mb-4">
         Revenue is event-dated (refunds on the day they happen), taxes and gift-card sales are excluded from revenue, and costs follow this
         store&apos;s calculation policy. Use it for operating decisions; your accountant&apos;s books remain the source of record.
@@ -156,8 +153,6 @@ export function PnlView() {
         )}
       </Card>
       <p className="mt-3 text-xs text-subtle">PDF and XLSX export arrive in phase 7.</p>
-      </>
-      )}
     </div>
   );
 }

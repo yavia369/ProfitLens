@@ -7,7 +7,8 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 import { connectStoreWithClientCredentials, ConnectionError, dayBoundsUtc, handleShopifyWebhook, ShopifySyncService } from "../src/shopify";
-import { ProfitService } from "../src/profit";
+import { DbReportingDataSource, ProfitService } from "../src/profit";
+import { ReportingService } from "../src/reporting/service";
 import { dec, DEFAULT_POLICY, ENGINE_VERSION, sum } from "@profitlens/finance";
 import { pagedOrder } from "../../shopify/test/fixtures/orders";
 
@@ -341,6 +342,53 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     expect(issues[0]).toMatchObject({ date: "2026-10-03", metric: "gross_sales" });
     expect(money(issues[0]!.difference)).toBe("-5.00");
     expect(await db.select().from(schema.reconciliationIssue)).toHaveLength(1);
+  });
+
+  it("live reporting source: aggregates + expenses and ad spend on read, orders, products, tenant isolation", async () => {
+    const { conn, scope, sync } = await setup();
+    await sync.backfill(conn.storeId);
+    const range = { start: "2026-10-01", end: "2026-10-31" };
+    // A monthly expense spread over October, a per-order expense, and a manual ad-spend entry.
+    await db.insert(schema.expense).values([
+      { organizationId: scope.organizationId, storeId: conn.storeId, name: "Apps", type: "recurring", frequency: "monthly", allocation: "spread", amount: "310", currency: "AUD", startDate: "2026-10-01" },
+      { organizationId: scope.organizationId, storeId: conn.storeId, name: "Packaging", type: "per_order", amount: "1.50", currency: "AUD", startDate: "2026-01-01" },
+    ]);
+    const [acct] = await db.insert(schema.adAccount).values({ organizationId: scope.organizationId, platform: "manual", externalId: "manual:1", name: "Manual", currency: "AUD", timezone: "Australia/Sydney", storeId: conn.storeId }).returning();
+    await db.insert(schema.adSpendDaily).values({ adAccountId: acct!.id, level: "account", entityExternalId: "manual:1", date: "2026-10-03", source: "manual", spend: "40" });
+
+    const source = new DbReportingDataSource(db, scope.organizationId);
+    const days = await source.getDailyComponents(conn.storeId, range);
+    expect(days).toHaveLength(31);
+    const total = (k: "revenue" | "fixedExpenses" | "variableExpenses" | "adSpend") => sum(days.map((d) => dec(d[k]))).toFixed(2);
+    const [p] = await db.select().from(schema.orderProfit);
+    expect(total("revenue")).toBe(money(p!.revenue));
+    expect(total("fixedExpenses")).toBe("310.00");
+    expect(total("variableExpenses")).toBe("1.50"); // one order
+    expect(total("adSpend")).toBe("40.00");
+    expect(days.find((d) => d.localDate === "2026-10-03")!.newCustomers).toBe(1);
+
+    const dashboard = await new ReportingService(source).dashboard(conn.storeId, range, "none");
+    expect(dashboard!.completeness).toMatchObject({ complete: false, ordersMissingCogs: 1, ordersMissingShipping: 1 });
+    expect(dashboard!.adChannels).toEqual([expect.objectContaining({ channel: "manual:manual", spend: "40.000000" })]);
+
+    const orders = await source.listOrders(conn.storeId, { range, search: "5001" });
+    expect(orders.total).toBe(1);
+    expect(orders.rows[0]).toMatchObject({ name: "#5001", financialStatus: "partially_refunded", cogs: "31.200000", isComplete: false });
+    const detail = await source.getOrder(conn.storeId, orders.rows[0]!.id);
+    expect(detail!.breakdown.map((b) => b.key)).toEqual(expect.arrayContaining(["grossSales", "cogs", "shippingCost", "returns", "cogsReversal", "chargebackLoss"]));
+    expect(detail!.breakdown.find((b) => b.key === "cogsReversal")).toMatchObject({ amount: "31.200000", date: "2026-10-08" });
+    expect(detail!.lineItems.find((l) => l.sku === "SOCK")).toMatchObject({ unitCost: null, costStatus: "missing" });
+
+    const products = await source.listProducts(conn.storeId, range);
+    expect(products.find((x) => x.sku === "SNK-8")).toMatchObject({ unitsSold: 1, cogs: "31.200000", costStatus: "actual" });
+    expect(products.find((x) => x.sku === "SOCK")).toMatchObject({ unitsSold: 2, cogs: "0.000000", costStatus: "missing" });
+
+    // Another organization sees nothing and cannot read the store.
+    const other = await seedOrg("other");
+    const foreign = new DbReportingDataSource(db, other.organizationId);
+    expect(await foreign.listStores()).toEqual([]);
+    await expect(foreign.getDailyComponents(conn.storeId, range)).rejects.toThrow();
+    await expect(foreign.listOrders(conn.storeId, { range })).rejects.toThrow();
   });
 
   it("an incremental sync recalculates the orders it changed", async () => {
