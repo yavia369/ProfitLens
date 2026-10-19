@@ -3,10 +3,17 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 5 — Finance engine & cost management: COMPLETE, awaiting owner approval** (2026-10-19).
-Phase 4 approved by the owner on 2026-10-19.
+**Phase 6 — Google Ads: IN PROGRESS** (started 2026-10-19). Phase 5 approved by the owner on 2026-10-19.
 `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` and `SHOPIFY_SHOP_DOMAIN` are cloud environment variables.
-**Never ask for these values in chat, never print them.**
+**Never ask for these or Google credentials in chat, never print them.**
+
+Phase 6 plan:
+1. `packages/google-ads`: service-account and OAuth token auth, REST `searchStream` client (v26), GAQL, mappers.
+2. Core: encrypted connection, account discovery (incl. manager children), account → store mapping, spend sync
+   (3-year backfill in 90-day windows, last-3-days restatement daily), manual ad spend with a double-counting guard.
+3. Web: Google Ads card in Stores & integrations, Costs → Ad spend page for manual entries.
+4. Live verification needs B4: owner follows `docs/GOOGLE_ADS_SETUP.md` and adds `GOOGLE_ADS_SERVICE_ACCOUNT_KEY`
+   (+ `GOOGLE_ADS_LOGIN_CUSTOMER_ID` if via a manager account) to the cloud environment, then says "Continue Phase 6".
 
 ## Fresh-container setup (any new session)
 1. `pg_ctlcluster 16 main start`. If the `profitlens` role is missing (password auth fails):
@@ -73,7 +80,7 @@ Phase 4 approved by the owner on 2026-10-19.
   - verified on Luraflo (see TESTING.md).
 
 ## In progress
-- None. Waiting for Phase 5 approval.
+- Phase 6 (see plan above).
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -97,12 +104,12 @@ Phase 4 approved by the owner on 2026-10-19.
 | B7 | Optional: `read_all_orders` for full history (today 1 order, #1001 from 2026-07-27, is outside the 60-day window). Unknown whether a Dev Dashboard app can be granted it | Before relying on history older than 60 days |
 | B8 | **Owner action:** Luraflo has no product costs (41 sold variants, 7,817 total) and no shipping rule, so every order is flagged incomplete and profit is overstated. Enter costs on Product costs (export CSV → fill → import), add a shipping rule and the running expenses (Shopify plan, apps) | Accurate profit figures |
 | B6 | Webhook delivery needs a public URL; until Phase 9 the 15-min poll covers it (D-029) | Phase 9 |
-| B4 | Google Cloud project + OAuth client (Google Ads API access level Explorer/Basic) | Phase 6 |
+| B4 | **Owner action:** Google Cloud project with Google Ads API Explorer access + service account key, added as a read-only user in Google Ads — steps in `docs/GOOGLE_ADS_SETUP.md` (sent 2026-10-19) | Phase 6 live verification |
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Owner approval of Phase 5; owner enters Luraflo costs (B8).
-2. Phase 6 (after approval): Google Ads integration and manual ad spend entry (needs B4).
+1. Phase 6 (in progress); owner: B4 (Google Ads access) and B8 (Luraflo costs).
+2. Phase 7 (after approval): advanced analytics.
 
 ## Test results
 - 2026-10-19 (Phase 5): `pnpm test` 129/129, `pnpm typecheck`, `next build`, Playwright 12/12; live Luraflo checks pass.
