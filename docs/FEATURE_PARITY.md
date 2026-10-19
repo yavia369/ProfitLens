@@ -48,5 +48,16 @@ Implemented on the **demo data source only** (live data arrives with Phases 4–
 | Fee rules per gateway, Shopify third-party fee rate, gateway overview with actual effective rates | Done, tested |
 | Custom expenses (one-time, recurring spread/on-date, per order, % of revenue/net sales/ad spend; marketing categories; as ad spend) | Done, tested (applied on read) |
 | Versioned calculation policy (owners/admins), full recalculation on change | Done, tested |
-| Manual ad spend entry UI, Google Ads | Phase 6 (ad spend rows are already included in reports when present) |
+| Manual ad spend entry UI, Google Ads | Done in Phase 6 (below) |
 | Per-order cost overrides UI | Engine and storage done; UI not built (later phase) |
+
+## Phase 6 status (2026-10-19)
+| Feature | Status |
+|---|---|
+| Connect Google Ads (service account), discover accounts incl. manager children, map accounts to stores | Done, integration + e2e tested; **live run pending owner setup (B4)** |
+| Daily campaign spend sync: 3-year backfill, 6-hourly runs re-reading the last 3 days, restatement detection | Done, integration-tested with a fake Google Ads API |
+| Manual ad spend (Meta/TikTok/other; adjustments; ranges) with double-counting guard | Done, tested |
+| Ad spend in dashboard KPIs, channel breakdown (platform-reported ROAS), P&L | Done (uses the Phase 5 reporting) |
+| Time-zone approximation label for ad accounts in another zone | Done |
+| Ad-group level, ads profitability views, Advertising page | Phase 7 |
+| FX conversion of foreign-currency ad accounts | Engine ready; rate provider blocked (B2) |

@@ -3,17 +3,17 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 6 — Google Ads: IN PROGRESS** (started 2026-10-19). Phase 5 approved by the owner on 2026-10-19.
-`SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` and `SHOPIFY_SHOP_DOMAIN` are cloud environment variables.
-**Never ask for these or Google credentials in chat, never print them.**
+**Phase 6 — Google Ads: CODE COMPLETE, live verification pending owner setup (B4).** Phase 5 approved 2026-10-19.
+`SHOPIFY_*` are cloud environment variables. **Never ask for these or Google credentials in chat, never print them.**
 
-Phase 6 plan:
-1. `packages/google-ads`: service-account and OAuth token auth, REST `searchStream` client (v26), GAQL, mappers.
-2. Core: encrypted connection, account discovery (incl. manager children), account → store mapping, spend sync
-   (3-year backfill in 90-day windows, last-3-days restatement daily), manual ad spend with a double-counting guard.
-3. Web: Google Ads card in Stores & integrations, Costs → Ad spend page for manual entries.
-4. Live verification needs B4: owner follows `docs/GOOGLE_ADS_SETUP.md` and adds `GOOGLE_ADS_SERVICE_ACCOUNT_KEY`
-   (+ `GOOGLE_ADS_LOGIN_CUSTOMER_ID` if via a manager account) to the cloud environment, then says "Continue Phase 6".
+## Resume Phase 6 (new session, after the owner adds the Google key)
+1. Fresh-container setup below (Postgres, install, `.env.local`, migrate — migrations up to `0004_ads_sync`).
+2. Check without printing: `for v in GOOGLE_ADS_SERVICE_ACCOUNT_KEY GOOGLE_ADS_LOGIN_CUSTOMER_ID; do [ -n "${!v}" ] && echo "$v set"; done`.
+3. Reload Luraflo if the DB is empty (step 4 below), then `pnpm --filter @profitlens/worker sync ads-connect <email>`
+   → `… ads-accounts <email>` → ask the owner which account belongs to Luraflo → `… ads-map <email> <adAccountId> <storeId>`
+   → `… ads-sync <adAccountId>`.
+4. Verify against Google Ads (spend per day/campaign for recent days, account currency/time zone), check the dashboard's
+   ad spend, ROAS and contribution after ads, record findings in `docs/INTEGRATIONS.md`, commit, report.
 
 ## Fresh-container setup (any new session)
 1. `pg_ctlcluster 16 main start`. If the `profitlens` role is missing (password auth fails):
@@ -79,8 +79,12 @@ Phase 6 plan:
   - web: live dashboard/orders/products/P&L, cost pages, editable versioned policy; reports default to the connected store;
   - verified on Luraflo (see TESTING.md).
 
+- Phase 6 code (2026-10-19; `docs/FEATURE_PARITY.md` "Phase 6 status", D-041…D-043): `packages/google-ads`, core ads
+  services (connect, discovery, mapping, 6-hourly spend sync with restatements, manual spend), Settings Google Ads card,
+  Costs → Ad spend page, worker queues + CLI, migration `0004_ads_sync`, setup guide `docs/GOOGLE_ADS_SETUP.md`.
+
 ## In progress
-- Phase 6 (see plan above).
+- Phase 6 live verification (blocked on B4).
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -108,10 +112,11 @@ Phase 6 plan:
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Phase 6 (in progress); owner: B4 (Google Ads access) and B8 (Luraflo costs).
+1. Owner: B4 (Google Ads access, `docs/GOOGLE_ADS_SETUP.md`), then "Continue Phase 6" for live verification; B8 (Luraflo costs).
 2. Phase 7 (after approval): advanced analytics.
 
 ## Test results
+- 2026-10-19 (Phase 6): `pnpm test` 148/148, `pnpm typecheck`, `next build`, Playwright 12/12; live Google Ads run pending B4.
 - 2026-10-19 (Phase 5): `pnpm test` 129/129, `pnpm typecheck`, `next build`, Playwright 12/12; live Luraflo checks pass.
 - 2026-10-19 (Phase 4 live): Luraflo verification passed (see above); `pnpm test` 81/81, `pnpm typecheck`,
   `next build`, Playwright 10/10.

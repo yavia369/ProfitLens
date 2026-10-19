@@ -103,14 +103,16 @@ Each order result stores an `inputs_hash`, so recompute is skipped when nothing 
 - **Uninstall:** mark the connection revoked, stop jobs, keep data for 48 h, then honour `shop/redact` (purge).
 
 ## 5. Google Ads ingestion design
-- OAuth web client (Google Cloud project owned by the merchant/operator), scope `adwords`,
-  `access_type=offline`, `prompt=consent`. The refresh token is stored encrypted.
-- Account discovery: `customers:listAccessibleCustomers` → for each, `customer` query (descriptive name,
-  currency, time_zone, manager flag) → user selects accounts and maps them to a store.
-- Sync: GAQL via `googleAds:searchStream` at campaign + ad_group level with `segments.date`.
-  Backfill up to 3 years in 90-day windows; daily job re-fetches the **last 3 days** to capture restatements.
-  Upsert keyed by `(ad_account_id, level, entity_id, date)`.
-- Quotas: the Explorer level allows 2,880 operations/day, which is plenty (a few requests per account per day).
+- Auth (D-041): a Google Cloud **service account** added as a read-only user in Google Ads (JWT bearer grant, scope
+  `adwords`); key stored AES-256-GCM encrypted in `ad_connection.credentials_enc`. User OAuth (refresh tokens) for other
+  merchants is Phase 9. Developer tokens no longer exist (sunset 2026-09-09); the Cloud project needs Explorer access.
+- Account discovery: `customers:listAccessibleCustomers` → `customer` query; managers' children via `customer_client`
+  (calls use `login-customer-id`) → the user maps accounts to stores.
+- Sync: GAQL via `googleAds:searchStream` at **campaign** level with `segments.date`. Backfill 3 years in 90-day
+  windows; every 6 hours re-read from the last synced date − 3 days (restatements). Each window is replaced atomically.
+  Ad-group level arrives with Phase 7 analytics.
+- Quotas: Explorer allows 2,880 operations/day; ProfitLens uses a few per account per run.
+- Manual spend lives in per-store pseudo accounts (`manual:<store>:<platform>:<currency>`, account-level rows).
 
 ## 6. Security model
 | Area | Control |

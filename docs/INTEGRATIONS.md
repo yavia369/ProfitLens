@@ -32,22 +32,41 @@ integration design will be added in Phase 2.
   - Order **agreements/sales** give event-dated revenue changes.
   - `unitCost` is current-only, so snapshot it on import.
 
-## Google Ads (verified against developers.google.com, 2026-10-18)
-- **API version:** v26, released 2026-10-14. **Developer tokens were sunset on 2026-09-09.** Access levels now attach to the Google Cloud project that owns the OAuth client.
+## Google Ads (re-verified against developers.google.com, 2026-10-19)
+- **API version:** v26 (latest, released 2026-10-14). **Developer tokens were sunset on 2026-09-09**; API access levels
+  belong to the Google Cloud project (VERIFIED: developer-token page, access-levels page, release notes).
 
   | Level | Accounts | Daily operations | How to get it |
   |---|---|---|---|
-  | Test | Test accounts only | 15,000 | Automatic |
-  | Explorer | Production too | 2,880 | Auto-granted |
+  | Test | Test accounts only | 15,000 | Default |
+  | Explorer | Production too | 2,880 (production) | Apply on the project's Google Ads API page |
   | Basic | Production too | 15,000 | Brand verification |
-  | Standard | Production too | Unlimited | About 10 business days of review |
+  | Standard | Production too | Unlimited | Review |
 
-- **OAuth:**
-  - The scope is `https://www.googleapis.com/auth/adwords`, which is sensitive and needs verification for external users.
-  - While the consent screen is in "Testing" mode, refresh tokens expire after 7 days.
-  - Send the `login-customer-id` header when access goes through a manager account.
-- **Spend query:** GAQL with `metrics.cost_micros` and `segments.date`. Dates are in the account's time zone (`customer.time_zone`); the currency is `customer.currency_code`.
-- **Client:** use REST `googleAds:searchStream`. There's no official Node SDK.
+  A project without production access gets `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION` (v26 release notes).
+- **Auth used (D-041):** service account (JWT bearer grant, scope `adwords`) added as a user in Google Ads. VERIFIED
+  in the service-account guide; no user OAuth needed for the owner's own accounts. User OAuth (refresh tokens, consent
+  screen verification, 7-day tokens in "Testing" mode) is only needed for other merchants — Phase 9.
+- **Requests:** `GET /v26/customers:listAccessibleCustomers`; `POST /v26/customers/{id}/googleAds:searchStream` with
+  `Authorization: Bearer` and `login-customer-id` when access is through a manager; no developer-token header (VERIFIED
+  in the v26 REST examples). Responses: array of batches with `results`; int64 values as strings, doubles as numbers.
+- **Spend:** GAQL over `campaign` with `metrics.cost_micros` and `segments.date`; dates in the account time zone
+  (`customer.time_zone`), currency `customer.currency_code`.
+
+## Google Ads implementation (Phase 6)
+| Piece | Where | Notes |
+|---|---|---|
+| Client | `packages/google-ads` | service-account tokens (RS256 JWT, cached, renewed 5 min early); REST client with retries on quota/5xx/network and typed errors (Google's specific error code kept); GAQL; exact micros → decimal |
+| Connection | `core/src/ads/connection.ts` | key validated (listAccessibleCustomers) before saving; stored AES-256-GCM encrypted; manager children discovered; accounts upserted without losing mappings |
+| Mapping | `mapAdAccount` | one account → one store; managers and closed accounts cannot sync; changing the store re-imports history |
+| Sync | `AdsSyncService` | first run: 3 years in 90-day windows; then from the last synced date − 3 days (restatements); each window replaced atomically; restated days counted; sync jobs in the Sync Center tables; errors stored on the account; 401 marks the connection `needs_reauth` |
+| Schedule | worker | `ads.google.sync-all` every 6 hours (`40 */6 * * *` UTC) → `ads.google.sync` per account |
+| Manual spend | `core/src/ads/manual.ts`, Costs → Ad spend | per channel and day or spread evenly over a range (exact remainder on the last day); re-entering a day replaces it; refused where API data exists unless marked adjustment; in reports, API data replaces plain manual entries for the same channel/day (D-042) |
+| Reporting | `DbReportingDataSource` | campaign rows for API accounts, account rows for manual entries (never both); FX via `fx_rate` (no provider yet, B2); accounts in another time zone flagged (`timezoneApproximation`) |
+| CLI | `apps/worker` | `sync ads-connect <email>` (env `GOOGLE_ADS_SERVICE_ACCOUNT_KEY`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`), `ads-accounts`, `ads-map`, `ads-sync [--full]` |
+
+**Live verification:** pending owner setup (B4, `docs/GOOGLE_ADS_SETUP.md`). Until then the client is tested against
+recorded-shape fakes only (UNKNOWN: exact field presence in Luraflo's account responses, access level granted).
 
 ## Meta / TikTok (unverified; primary docs blocked)
 - **Meta:** Graph/Marketing API v26.0. `ads_read` with Standard Access is enough for your own ad accounts; other merchants' accounts need Advanced Access through App Review. Daily spend comes from `/act_{id}/insights?level=campaign&time_increment=1`.
