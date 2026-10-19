@@ -4,6 +4,7 @@ import {
   AdminClient,
   assembleBulkJsonl,
   bulkOrdersQuery,
+  hasTruncatedConnections,
   mapOrder,
   mapProduct,
   mapShop,
@@ -81,10 +82,17 @@ describe("order mapping", () => {
 });
 
 describe("bulk JSONL", () => {
-  it("reassembles child lines into the same structure as the paged query", () => {
+  it("reassembles child lines into the same structure as the paged query (refund lines need a refetch)", () => {
     const assembled = assembleBulkJsonl<RawOrder>(bulkOrderLines());
     expect(assembled).toHaveLength(1);
-    expect(mapOrder(assembled[0]!, "Australia/Sydney")).toEqual(mapOrder(pagedOrder(), "Australia/Sydney"));
+    const order = assembled[0]!;
+    expect(order.refunds[0]!.refundLineItems).toBeUndefined();
+    expect(hasTruncatedConnections(order)).toBe(true);
+    // Unfetched refund lines are an error, never an empty list.
+    expect(() => mapOrder(order, "Australia/Sydney")).toThrow(ShopifyError);
+    const withRefundLines = { ...order, refunds: order.refunds.map((r, i) => ({ ...r, refundLineItems: pagedOrder().refunds[i]!.refundLineItems! })) };
+    expect(mapOrder(withRefundLines, "Australia/Sydney")).toEqual(mapOrder(pagedOrder(), "Australia/Sydney"));
+    expect(hasTruncatedConnections(pagedOrder())).toBe(false);
   });
 
   it("rejects orphan lines instead of silently dropping data", () => {
@@ -96,6 +104,8 @@ describe("bulk JSONL", () => {
     expect((q.match(/\{ edges \{ node/g) ?? []).length).toBeLessThanOrEqual(5);
     expect(q).not.toMatch(/\b(orders|lineItems|agreements|sales|refundLineItems)\(first/); // bulk connections take no pagination args
     expect(q).toContain("transactions(first: 50)"); // lists still need an argument
+    // Shopify rejects a connection inside a list field (e.g. refunds → refundLineItems).
+    expect(q).not.toContain("refundLineItems");
   });
 });
 

@@ -61,7 +61,6 @@ function childSlot(childId: string, parentId: string): string | null {
     if (type === "LineItem") return "lineItems";
     if (type.endsWith("Agreement") || type === "SalesAgreement") return "agreements";
   }
-  if (parentType === "Refund" && type === "RefundLineItem") return "refundLineItems";
   if (parentType && parentType.endsWith("Agreement") && type.endsWith("Sale")) return "sales";
   if (parentType === "Product" && type === "ProductVariant") return "variants";
   return null;
@@ -69,8 +68,8 @@ function childSlot(childId: string, parentId: string): string | null {
 
 /**
  * Reassembles bulk JSONL into nested objects. Root objects (no __parentId) are yielded once all lines
- * are read; children are attached to their parent arrays. Refunds are inline lists on the order, so
- * their refundLineItems reference the Refund id, which is indexed when the order line is read.
+ * are read; children are attached to their parent arrays. Refunds are inline lists on the order and come
+ * without refundLineItems (bulk can't select a connection inside a list), so refunded orders need a refetch.
  */
 export function assembleBulkJsonl<T>(lines: Iterable<string>): T[] {
   const roots: JsonObject[] = [];
@@ -106,7 +105,6 @@ export function assembleBulkJsonl<T>(lines: Iterable<string>): T[] {
       r.lineItems ??= [];
       r.agreements ??= [];
       for (const a of r.agreements as JsonObject[]) a.sales ??= [];
-      for (const rf of (r.refunds as JsonObject[] | undefined) ?? []) rf.refundLineItems ??= [];
     }
     if (typeof r.id === "string" && r.id.includes("/Product/")) r.variants ??= [];
   }

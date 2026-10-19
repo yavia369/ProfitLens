@@ -1,8 +1,9 @@
 /**
  * GraphQL documents (Admin API 2026-10). The order selection is shared by the bulk backfill (connections
  * without pagination arguments) and the paged incremental sync (connections with `first`).
- * Bulk constraint: ≤ 5 connections, ≤ 2 levels of connection nesting — here: orders, lineItems,
- * agreements → sales, refundLineItems (refunds and transactions are plain lists).
+ * Bulk constraints: ≤ 5 connections, ≤ 2 levels of connection nesting, and no connection inside a list
+ * field (verified live 2026-10-19). `refunds` is a list, so bulk exports omit its `refundLineItems`
+ * connection; the backfill refetches refunded orders with the paged query (see `hasTruncatedConnections`).
  */
 
 const money = "shopMoney { amount currencyCode }";
@@ -60,12 +61,11 @@ export function orderSelection(paged: boolean): string {
     refunds(first: 50) {
       id createdAt note
       totalRefundedSet { ${money} }
-      ${conn(
-        "refundLineItems",
-        paged,
-        100,
-        `id quantity restockType restocked lineItem { id } subtotalSet { ${money} } totalTaxSet { ${money} }`,
-      )}
+      ${
+        paged
+          ? conn("refundLineItems", paged, 100, `id quantity restockType restocked lineItem { id } subtotalSet { ${money} } totalTaxSet { ${money} }`)
+          : ""
+      }
     }
     fulfillments(first: 20) { id status createdAt trackingInfo(first: 1) { company } }
   `;
@@ -127,13 +127,15 @@ export const PAGED_PRODUCTS_QUERY = `
     }
   }`;
 
+/**
+ * Top-level `disputes` (not `shopifyPaymentsAccount.disputes`, which also needs `read_shopify_payments_accounts`;
+ * verified live 2026-10-19).
+ */
 export const DISPUTES_QUERY = `
   query Disputes($after: String) {
-    shopifyPaymentsAccount {
-      disputes(first: 50, after: $after) {
-        edges { node { id type status initiatedAt finalizedOn amount { amount currencyCode } reasonDetails { reason } order { id } } }
-        pageInfo { hasNextPage endCursor }
-      }
+    disputes(first: 50, after: $after) {
+      edges { node { id type status initiatedAt finalizedOn amount { amount currencyCode } reasonDetails { reason } order { id } } }
+      pageInfo { hasNextPage endCursor }
     }
   }`;
 

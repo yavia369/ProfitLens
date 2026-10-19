@@ -1,31 +1,22 @@
 # Project Status
 
-_Last updated: 2026-10-18_
+_Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 4 — Shopify Connection: CODE COMPLETE, live verification on Luraflo pending owner credentials.**
-Phases 1–3 approved; Phase 4 approved 2026-10-18 (including installing a read-only ProfitLens app on Luraflo).
-The owner is following `docs/SHOPIFY_SETUP.md` and will add `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` and
-`SHOPIFY_SHOP_DOMAIN=gpnj6g-tr.myshopify.com` as cloud environment variables, then start a new session with
-"Continue Phase 4". **Never ask for these values in chat.**
+**Phase 4 — Shopify Connection: COMPLETE, awaiting owner approval** (live verification on Luraflo passed 2026-10-19).
+Phases 1–3 approved; Phase 4 approved for build 2026-10-18 (including installing a read-only ProfitLens app on Luraflo).
+`SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` and `SHOPIFY_SHOP_DOMAIN` are cloud environment variables.
+**Never ask for these values in chat, never print them.**
 
-## Resume Phase 4 (new session)
-1. `pg_ctlcluster 16 main start` and `pnpm install`.
-2. If `apps/web/.env.local` is missing (container is fresh): `cp .env.example apps/web/.env.local` and fill dev values
-   (DATABASE_URL `postgres://profitlens:profitlens@localhost:5432/profitlens`, a random BETTER_AUTH_SECRET, and
-   ENCRYPTION_KEYS `{"dev1":"<base64 32 bytes>"}` + ENCRYPTION_ACTIVE_KID `dev1`). Dev keys only, never committed.
-   A new key means previously stored encrypted secrets cannot be decrypted; reconnect the store.
-3. `DATABASE_URL=… pnpm db:migrate`.
-4. Check the env vars exist without printing them:
-   `for v in SHOPIFY_CLIENT_ID SHOPIFY_CLIENT_SECRET SHOPIFY_SHOP_DOMAIN; do [ -n "${!v}" ] && echo "$v set"; done`.
-5. Create a local user (sign up in the web app, or reuse one), then
-   `pnpm --filter @profitlens/worker sync connect <user-email>` (reads SHOPIFY_* from env), then
-   `… sync backfill <storeId>` and `… sync status <storeId>`.
-6. Verify against Shopify (Shopify MCP connector, read-only): order count per day for recent days, a sample order's
-   line items/refunds/transactions/fees, product unit costs. Record findings for the UNKNOWNs in `docs/INTEGRATIONS.md`
-   (read_all_orders grant, SalesAgreement/Sale GID formats, tax-inclusive AUD amounts, ordersCount parity).
-7. Run `… sync reconcile <storeId>`; check the Sync Center (`/settings/sync`) in the web app.
-8. Update docs, commit, push, then send the Phase 4 report and ask for approval.
+## Fresh-container setup (any new session)
+1. `pg_ctlcluster 16 main start`. If the `profitlens` role is missing (password auth fails):
+   `su postgres -c "psql -c \"CREATE ROLE profitlens LOGIN PASSWORD 'profitlens' CREATEDB\" -c 'CREATE DATABASE profitlens OWNER profitlens' -c 'CREATE DATABASE profitlens_test OWNER profitlens'"`.
+2. `pnpm install`; if `apps/web/.env.local` is missing: `cp .env.example apps/web/.env.local`, fill dev values
+   (random BETTER_AUTH_SECRET, ENCRYPTION_KEYS `{"dev1":"<base64 32 bytes>"}` + ENCRYPTION_ACTIVE_KID `dev1`) and
+   delete the empty `SHOPIFY_*` lines. Dev keys only, never committed. The local DB is empty in a fresh container.
+3. `DATABASE_URL=postgres://profitlens:profitlens@localhost:5432/profitlens pnpm db:migrate`.
+4. To reload Luraflo: sign up a local user in the web app, then `pnpm --filter @profitlens/worker sync connect <email>`,
+   `… sync backfill <storeId>`, `… sync status`.
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
@@ -67,9 +58,13 @@ The owner is following `docs/SHOPIFY_SETUP.md` and will add `SHOPIFY_CLIENT_ID`,
   - `apps/web`: connect-store form, Sync Center, webhook route, live stores in the store switcher with an
     explanatory "profit engine pending" state (409) until Phase 5;
   - migration `0002_sync_checkpoints`; per-suite test databases.
+  - live verification on Luraflo (2026-10-19): connect, backfill (32 orders, 235 products, 7,817 variants,
+    1 refund, 1 dispute), incremental, reconcile; cross-checked against ShopifyQL and the Shopify connector
+    (counts, gross/discounts/net sales per day, fees, refund lines all identical). Two bugs found and fixed:
+    bulk refund lines (D-031) and disputes scope (D-032). See `docs/INTEGRATIONS.md` "Live verification".
 
 ## In progress
-- Phase 4 live verification on Luraflo (blocked on B3 credentials).
+- None. Waiting for Phase 4 approval.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -86,17 +81,21 @@ The owner is following `docs/SHOPIFY_SETUP.md` and will add `SHOPIFY_CLIENT_ID`,
 |---|---|---|
 | B1 | ~~GitHub repo~~ RESOLVED: `yavia369/ProfitLens` (private since 2026-10-18). | — |
 | B2 | Network: Shopify + Google hosts now allowed (verified 2026-10-18). Still blocked: FX-rate hosts (openexchangerates.org, ECB, frankfurter), `app.trueprofit.io`, `be.trueprofit.io`, `developers.facebook.com` | FX needed for multi-currency tests against live rates (Phase 5+) |
-| B3 | Shopify: approval GIVEN. Owner creates the Dev Dashboard app per `docs/SHOPIFY_SETUP.md` and adds SHOPIFY_* env vars to the cloud environment | Phase 4 live verification |
+| B3 | ~~Shopify app + env vars~~ RESOLVED 2026-10-19 (connected, verified). | — |
+| B7 | Optional: `read_all_orders` for full history (today 1 order, #1001 from 2026-07-27, is outside the 60-day window). Unknown whether a Dev Dashboard app can be granted it | Before relying on history older than 60 days |
+| B8 | Luraflo has no product unit costs in Shopify: COGS will show as missing until costs are entered (Phase 5 cost pages or Shopify admin) | Phase 5 profit figures |
 | B6 | Webhook delivery needs a public URL; until Phase 9 the 15-min poll covers it (D-029) | Phase 9 |
 | B4 | Google Cloud project + OAuth client (Google Ads API access level Explorer/Basic) | Phase 6 |
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Phase 4 live verification (see "Resume Phase 4"), Phase 4 report, wait for approval.
+1. Owner approval of Phase 4.
 2. Phase 5 (after approval): profit engine (order results from ledger + costs + fees + policy), cost management
    pages (product costs, shipping, fees, expenses), DB-backed ReportingDataSource for live stores.
 
 ## Test results
+- 2026-10-19 (Phase 4 live): Luraflo verification passed (see above); `pnpm test` 81/81, `pnpm typecheck`,
+  `next build`, Playwright 10/10.
 - 2026-10-18 (Phase 4): `pnpm test` 81/81 passed; `pnpm typecheck` and `next build` pass; Playwright 10/10 passed.
   Live Shopify verification not yet run.
 - 2026-10-18: `pnpm test` 45/45 passed; `pnpm typecheck` passes; `next build` passes; Playwright 10/10 passed

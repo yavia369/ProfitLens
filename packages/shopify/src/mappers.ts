@@ -184,21 +184,25 @@ export function mapOrder(raw: RawOrder, timezone: string): OrderFacts {
         totalTaxAmount: mReq(s.totalTaxAmount, "totalTaxAmount"),
       }));
     }),
-    refunds: raw.refunds.map((r) => ({
-      shopifyGid: r.id,
-      createdAtShopify: new Date(r.createdAt),
-      totalRefunded: m(r.totalRefundedSet),
-      note: r.note,
-      lineItems: flatten(r.refundLineItems).map((rl) => ({
-        shopifyGid: rl.id,
-        lineItemGid: rl.lineItem.id,
-        quantity: rl.quantity,
-        restockType: rl.restockType,
-        restocked: rl.restocked,
-        subtotal: m(rl.subtotalSet),
-        totalTax: m(rl.totalTaxSet),
-      })),
-    })),
+    refunds: raw.refunds.map((r) => {
+      // Never treat unfetched refund lines as "no lines": that would silently drop returns and restocks.
+      if (r.refundLineItems === undefined) throw new ShopifyError(`Refund ${r.id} has no refund lines fetched; refetch the order with the paged query`, "graphql");
+      return {
+        shopifyGid: r.id,
+        createdAtShopify: new Date(r.createdAt),
+        totalRefunded: m(r.totalRefundedSet),
+        note: r.note,
+        lineItems: flatten(r.refundLineItems).map((rl) => ({
+          shopifyGid: rl.id,
+          lineItemGid: rl.lineItem.id,
+          quantity: rl.quantity,
+          restockType: rl.restockType,
+          restocked: rl.restocked,
+          subtotal: m(rl.subtotalSet),
+          totalTax: m(rl.totalTaxSet),
+        })),
+      };
+    }),
     transactions: raw.transactions.map((t) => {
       const processed = date(t.processedAt);
       // Fees are reported in the shop's settlement currency; only sum fees in the shop currency.

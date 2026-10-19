@@ -75,7 +75,8 @@ export interface RawRefund {
   createdAt: string;
   note: string | null;
   totalRefundedSet: MoneyBag | null;
-  refundLineItems: MaybeEdges<RawRefundLineItem>;
+  /** Absent in bulk exports (a connection inside a list field); fetched by the paged query only. */
+  refundLineItems?: MaybeEdges<RawRefundLineItem>;
 }
 
 export interface RawVisit {
@@ -168,8 +169,16 @@ export function flatten<T>(c: MaybeEdges<T> | null | undefined): T[] {
   return Array.isArray(c) ? c : c.edges.map((e) => e.node);
 }
 
-/** True if any nested connection reports more pages than were fetched (paged queries only). */
+/**
+ * True if any nested connection reports more pages than were fetched (paged queries), or was not fetched
+ * at all (refund lines in bulk exports). Such orders must be refetched with ORDER_BY_ID_QUERY.
+ */
 export function hasTruncatedConnections(order: RawOrder): boolean {
   const more = (c: MaybeEdges<unknown>) => !Array.isArray(c) && c.pageInfo?.hasNextPage === true;
-  return more(order.lineItems) || more(order.agreements) || flatten(order.agreements).some((a) => more(a.sales)) || order.refunds.some((r) => more(r.refundLineItems));
+  return (
+    more(order.lineItems) ||
+    more(order.agreements) ||
+    flatten(order.agreements).some((a) => more(a.sales)) ||
+    order.refunds.some((r) => r.refundLineItems === undefined || more(r.refundLineItems))
+  );
 }

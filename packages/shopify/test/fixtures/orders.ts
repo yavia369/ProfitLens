@@ -166,7 +166,10 @@ export function pagedOrder(): RawOrder {
   };
 }
 
-/** The same order as bulk JSONL lines (connections emitted as child lines with __parentId). */
+/**
+ * The same order as bulk JSONL lines (connections emitted as child lines with __parentId). Like Shopify,
+ * refunds carry no refundLineItems: bulk can't select a connection inside the `refunds` list.
+ */
 export function bulkOrderLines(): string[] {
   const o = pagedOrder();
   const { lineItems, agreements, refunds, ...rest } = o;
@@ -180,9 +183,6 @@ export function bulkOrderLines(): string[] {
     const { sales, ...a } = e.node;
     lines.push({ ...a, __parentId: o.id });
     for (const s of sales.edges) lines.push({ ...s.node, __parentId: e.node.id });
-  }
-  for (const r of refunds) {
-    for (const e of (r.refundLineItems as { edges: { node: object }[] }).edges) lines.push({ ...e.node, __parentId: r.id });
   }
   return lines.map((l) => JSON.stringify(l));
 }

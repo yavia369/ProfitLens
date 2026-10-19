@@ -37,14 +37,8 @@ function fakeShopify(state: { orders: RawOrder[]; products: RawProduct[]; scopes
         delete o[key];
         for (const e of c.edges) children.push([key, e.node]);
       }
-      const refundChildren: [string, unknown][] = [];
-      if (kind === "orders") {
-        for (const rf of o.refunds as Record<string, unknown>[]) {
-          const c = rf.refundLineItems as { edges: { node: object }[] };
-          delete rf.refundLineItems;
-          for (const e of c.edges) refundChildren.push([rf.id as string, e.node]);
-        }
-      }
+      // Like Shopify, bulk exports carry no refund lines (a connection inside the `refunds` list).
+      if (kind === "orders") for (const rf of o.refunds as Record<string, unknown>[]) delete rf.refundLineItems;
       lines.push(JSON.stringify(o));
       for (const [key, node] of children) {
         const n = node as Record<string, unknown>;
@@ -55,7 +49,6 @@ function fakeShopify(state: { orders: RawOrder[]; products: RawProduct[]; scopes
           for (const s of sales.edges) lines.push(JSON.stringify({ ...s.node, __parentId: n.id }));
         } else lines.push(JSON.stringify({ ...n, __parentId: r.id }));
       }
-      for (const [parent, node] of refundChildren) lines.push(JSON.stringify({ ...(node as object), __parentId: parent }));
     }
     return lines.join("\n");
   };
@@ -81,7 +74,7 @@ function fakeShopify(state: { orders: RawOrder[]; products: RawProduct[]; scopes
     if (query.includes("OrdersPage")) return respond(200, { data: { orders: { edges: state.orders.map((node) => ({ cursor: node.id, node })), pageInfo: { hasNextPage: false, endCursor: null } } }, extensions: { cost } });
     if (query.includes("OrderById")) return respond(200, { data: { order: state.orders.find((o) => o.id === variables.id) ?? null }, extensions: { cost } });
     if (query.includes("Disputes"))
-      return respond(200, { data: { shopifyPaymentsAccount: { disputes: { edges: [{ node: { id: "gid://shopify/ShopifyPaymentsDispute/1", type: "CHARGEBACK", status: "LOST", initiatedAt: "2026-10-09T00:00:00Z", finalizedOn: "2026-10-12", amount: { amount: "159.88", currencyCode: "AUD" }, reasonDetails: { reason: "FRAUDULENT" }, order: { id: "gid://shopify/Order/5001" } } }], pageInfo: { hasNextPage: false, endCursor: null } } } }, extensions: { cost } });
+      return respond(200, { data: { disputes: { edges: [{ node: { id: "gid://shopify/ShopifyPaymentsDispute/1", type: "CHARGEBACK", status: "LOST", initiatedAt: "2026-10-09T00:00:00Z", finalizedOn: "2026-10-12", amount: { amount: "159.88", currencyCode: "AUD" }, reasonDetails: { reason: "FRAUDULENT" }, order: { id: "gid://shopify/Order/5001" } } }], pageInfo: { hasNextPage: false, endCursor: null } } }, extensions: { cost } });
     if (query.includes("OrdersCount")) return respond(200, { data: { ordersCount: { count: state.ordersCount, precision: "EXACT" } }, extensions: { cost } });
     throw new Error(`unexpected request ${u} ${query.slice(0, 60)}`);
   }) as unknown as FetchLike;

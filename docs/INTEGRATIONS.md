@@ -59,7 +59,8 @@ integration design will be added in Phase 2.
 | Admin GraphQL client | `packages/shopify/src/client.ts` | cost-based throttling from `extensions.cost`, retries on 429/5xx/THROTTLED, typed errors |
 | Auth | `packages/shopify/src/auth.ts`, `packages/core/src/shopify/connection.ts` | client credentials grant (D-026); client secret and access token stored AES-256-GCM encrypted with per-record context; token refreshed 5 min before expiry |
 | Scopes | `REQUIRED_SCOPES` | `read_orders, read_products, read_inventory, read_customers, read_returns, read_shopify_payments_payouts, read_shopify_payments_disputes`; `read_all_orders` optional (without it history is limited to 60 days and the UI says so) |
-| Backfill | `ShopifySyncService.backfill` | bulk operations for products (variants + inventory item unit cost) and orders (line items, agreements→sales, refunds→refund line items, transactions with fees) |
+| Backfill | `ShopifySyncService.backfill` | bulk operations for products (variants + inventory item unit cost) and orders (line items, agreements→sales, refunds, transactions with fees). Bulk cannot select a connection inside a list field, so refunds come without refund line items; refunded orders are refetched with the paged `OrderById` query (D-031) |
+| Disputes | `syncDisputes` | top-level `disputes` query (covered by `read_shopify_payments_disputes`); `shopifyPaymentsAccount.disputes` would also need `read_shopify_payments_accounts` (D-032) |
 | Incremental | `ShopifySyncService.incremental` | paged `updated_at` queries with a 5-min overlap; checkpoint `orders_synced_through` |
 | Idempotency | `packages/core/src/shopify/upsert.ts` | upserts by Shopify GID; an older `updatedAt` never overwrites a newer one; child rows replaced atomically per order |
 | Costs | `syncShopifyCostVersion` | Shopify `unitCost` snapshot becomes an effective-dated cost version (source `shopify`); manual versions are never touched; variants without a cost stay "missing" (never 0) |
@@ -67,9 +68,24 @@ integration design will be added in Phase 2.
 | Reconciliation | `reconcileOrderCounts` | Shopify `ordersCount` vs ours per store-local day; mismatches recorded as `reconciliation_issue` |
 | Worker | `apps/worker` | pg-boss queues and crons (D-027); CLI `pnpm --filter @profitlens/worker sync <connect|backfill|incremental|reconcile|status>` |
 
-**Still to verify live (UNKNOWN until run against Luraflo):** whether a Dev Dashboard app can be granted
-`read_all_orders`; exact GID formats of `SalesAgreement`/`Sale` in bulk output; how tax-inclusive pricing appears in
-sales amounts for an AUD store; `ordersCount` parity with Shopify admin.
+### Live verification on Luraflo (2026-10-19)
+Connected with the store-owned Dev Dashboard app (client credentials). Granted scopes: the 7 required, no
+`read_all_orders`. Backfill imported 32 orders, 42 line items, 77 sales-ledger entries, 1 refund (1 refund line),
+33 payment transactions, 1 dispute, 235 products, 7,817 variants. Cross-checked with the Shopify connector
+(independent auth) and ShopifyQL:
+
+| Check | Result |
+|---|---|
+| Order count per store-local day, 2026-10-05 → 10-18 (ShopifyQL `FROM sales SHOW orders`) | VERIFIED: identical on all 11 days (32 orders) |
+| `ordersCount` parity (`sync reconcile`, 30 days) | VERIFIED: 0 mismatches |
+| Gross sales and discounts per day (order subtotal + discounts vs ShopifyQL) | VERIFIED: identical on all days |
+| Net sales (sales ledger total vs ShopifyQL `net_sales`) | VERIFIED: 2,245.43 AUD both; refund of #1002 (created 2026-10-14 16:46 UTC) dated 2026-10-15 in Australia/Canberra by both |
+| Sample order #1002: refund line, restock type, fees | VERIFIED: qty 1, NO_RESTOCK, 35.99; SALE fee 2.36 = 1.83 processing + 0.53 foreign exchange; REFUND has no fee data (stored as unknown, not 0) |
+| Product unit costs | VERIFIED: Luraflo has no unit costs in Shopify (sampled `unitCost: null`); 0 of 7,817 variants have a cost, so all COGS will show as missing until costs are entered (Phase 5) |
+| `SalesAgreement` / `Sale` GID formats in bulk output | VERIFIED: every agreement (order and refund) is `gid://shopify/SalesAgreement/N`, every sale `gid://shopify/Sale/N`; assembler handles both |
+| `read_all_orders` | Not requested on the app. Without it, Shopify's all-time count is 33 vs 32 visible: #1001 (2026-07-27, USD 0.99) is outside the 60-day window. Whether a Dev Dashboard app can be granted it remains UNKNOWN |
+| Tax-inclusive AUD amounts | UNKNOWN (not testable on Luraflo): `taxesIncluded: false` and no tax charged on any order |
+| Bugs found and fixed by the live run | Bulk query rejected (connection inside the `refunds` list, D-031); disputes access denied via `shopifyPaymentsAccount` (D-032) |
 
 ## Integration strategy (Phase 2 decisions)
 Design details are in `ARCHITECTURE.md` §4 (Shopify) and §5 (Google Ads).

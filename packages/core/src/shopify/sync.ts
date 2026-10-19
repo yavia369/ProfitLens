@@ -135,7 +135,14 @@ export class ShopifySyncService {
         const orders = assembleBulkJsonl<RawOrder>(await downloadJsonl(ordersDone.url, fetchText));
         await progress(0, orders.length, "orders saved");
         for (let i = 0; i < orders.length; i += 100) {
-          const m = await this.saveOrders(sc, orders.slice(i, i + 100), stats);
+          // Bulk exports omit refund lines, so refunded orders are completed with the paged query.
+          // An order deleted since the export (refetch returns null) is skipped rather than saved partially.
+          const batch: RawOrder[] = [];
+          for (const o of orders.slice(i, i + 100)) {
+            const full = hasTruncatedConnections(o) ? await this.refetchOrder(sc, o.id) : o;
+            if (full) batch.push(full);
+          }
+          const m = await this.saveOrders(sc, batch, stats);
           if (m && (!maxUpdated || m > maxUpdated)) maxUpdated = m;
           await progress(Math.min(i + 100, orders.length), orders.length, "orders saved");
         }
@@ -234,7 +241,7 @@ export class ShopifySyncService {
     if (!sc.scopes.includes("read_shopify_payments_disputes")) return 0;
     let count = 0;
     for (let after: string | null = null; ; ) {
-      type DisputesPage = { shopifyPaymentsAccount: { disputes: { edges: { node: RawDispute }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } | null };
+      type DisputesPage = { disputes: { edges: { node: RawDispute }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
       let data: DisputesPage;
       try {
         ({ data } = await sc.client.request<DisputesPage>(DISPUTES_QUERY, { after }, 50));
@@ -243,9 +250,7 @@ export class ShopifySyncService {
         if (e instanceof ShopifyError && e.kind === "graphql") return count;
         throw e;
       }
-      const account = data.shopifyPaymentsAccount;
-      if (!account) return count;
-      for (const { node } of account.disputes.edges) {
+      for (const { node } of data.disputes.edges) {
         const d = mapDispute(node);
         const orderRow = d.orderGid
           ? await this.deps.db.select({ id: schema.order.id }).from(schema.order).where(and(eq(schema.order.storeId, sc.store.id), eq(schema.order.shopifyGid, d.orderGid))).limit(1)
@@ -257,8 +262,8 @@ export class ShopifySyncService {
           .onConflictDoUpdate({ target: [schema.dispute.storeId, schema.dispute.shopifyGid], set: { orderId: values.orderId, status: values.status, reason: values.reason, amount: values.amount, finalizedOn: values.finalizedOn, updatedAt: new Date() } });
         count += 1;
       }
-      if (!account.disputes.pageInfo.hasNextPage) return count;
-      after = account.disputes.pageInfo.endCursor;
+      if (!data.disputes.pageInfo.hasNextPage) return count;
+      after = data.disputes.pageInfo.endCursor;
     }
   }
 
