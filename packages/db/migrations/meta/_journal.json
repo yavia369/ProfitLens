@@ -36,6 +36,13 @@
       "when": 1792394009127,
       "tag": "0004_ads_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792400986615,
+      "tag": "0005_team_weight_shipping",
+      "breakpoints": true
     }
   ]
 }

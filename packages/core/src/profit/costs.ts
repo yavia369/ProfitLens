@@ -429,6 +429,8 @@ export async function exportCostsCsv(db: Database, scope: OrgScope, storeId: str
 // =============================================================================================== shipping & handling
 
 const tier = z.object({ minQuantity: z.coerce.number().int().min(1).max(100_000), amount });
+/** Weight tiers in grams (the form converts kg). */
+const weightTier = z.object({ minGrams: z.number({ error: "Enter weights in kg like 0.5 (up to 3 decimals)." }).int().min(0).max(10_000_000), amount });
 export const shippingRuleSchema = z
   .object({
     name: z.string().trim().min(1, "Give the rule a name.").max(100),
@@ -437,6 +439,7 @@ export const shippingRuleSchema = z
       z.object({ type: z.literal("per_item"), amount }),
       z.object({ type: z.literal("first_plus_additional"), first: amount, additional: amount }),
       z.object({ type: z.literal("tiered_quantity"), tiers: z.array(tier).min(1).max(20) }),
+      z.object({ type: z.literal("tiered_weight"), tiers: z.array(weightTier).min(1).max(20) }),
     ]),
     countryCodes: z.array(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, "Use 2-letter country codes like AU.")).max(250).nullable().default(null),
     priority: z.coerce.number().int().min(1).max(10_000).default(100),

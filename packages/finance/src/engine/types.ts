@@ -40,6 +40,8 @@ export interface EngineLine {
   readonly quantity: number;
   readonly isGiftCard: boolean;
   readonly requiresShipping: boolean;
+  /** Unit weight in grams (the variant's current weight). Only loaded when a weight-based shipping rule exists; null = unknown. */
+  readonly weightGrams?: number | null;
 }
 
 export interface EngineRefund {
@@ -116,7 +118,8 @@ export type ShippingRuleParams =
   | { readonly type: "per_order"; readonly amount: MoneyString }
   | { readonly type: "per_item"; readonly amount: MoneyString }
   | { readonly type: "first_plus_additional"; readonly first: MoneyString; readonly additional: MoneyString }
-  | { readonly type: "tiered_quantity"; readonly tiers: readonly { readonly minQuantity: number; readonly amount: MoneyString }[] };
+  | { readonly type: "tiered_quantity"; readonly tiers: readonly { readonly minQuantity: number; readonly amount: MoneyString }[] }
+  | { readonly type: "tiered_weight"; readonly tiers: readonly { readonly minGrams: number; readonly amount: MoneyString }[] };
 
 export interface ShippingRuleInput extends EffectiveDated {
   readonly name: string;

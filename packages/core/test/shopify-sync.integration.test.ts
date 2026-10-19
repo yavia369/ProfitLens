@@ -26,6 +26,7 @@ import {
   saveHandlingRule,
   savePolicy,
   saveShippingRule,
+  deleteShippingRule,
   setVariantCost,
   variantCostHistory,
 } from "../src/profit";
@@ -512,6 +513,32 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     expect(money(p1!.shippingCost)).toBe("11.00"); // 4 shippable units: 8 + 3 × 1
     expect(p1!.missingComponents).not.toContain("shipping");
     await expect(saveShippingRule(db, scope, conn.storeId, null, { name: "bad", params: { type: "per_order", amount: "1" }, effectiveFrom: "2026-02-01", effectiveTo: "2026-01-01" })).rejects.toThrow();
+
+    // A weight rule (higher priority) prices by the variants' weights; a missing weight is flagged, never guessed.
+    const variantWeights = async (grams: number | null) => {
+      await db.update(schema.variant).set({ weightGrams: grams }).where(eq(schema.variant.storeId, conn.storeId));
+    };
+    await variantWeights(400);
+    const byWeight = await saveShippingRule(db, scope, conn.storeId, null, {
+      name: "Weight",
+      params: { type: "tiered_weight", tiers: [{ minGrams: 0, amount: "9.00" }, { minGrams: 1500, amount: "14.00" }] },
+      priority: 1,
+      effectiveFrom: "2026-01-01",
+    });
+    await applyRecalc(profit, null, conn.storeId, byWeight);
+    const [pw] = await db.select().from(schema.orderProfit);
+    expect(money(pw!.shippingCost)).toBe("14.00"); // 4 units × 400 g = 1,600 g
+    await variantWeights(0); // Shopify's "no weight entered"
+    await profit.recalcStore(conn.storeId);
+    const [pm] = await db.select().from(schema.orderProfit);
+    expect(pm!.missingComponents).toContain("shipping");
+    await expect(
+      saveShippingRule(db, scope, conn.storeId, null, { name: "bad kg", params: { type: "tiered_weight", tiers: [{ minGrams: Number.NaN, amount: "1" }] }, effectiveFrom: "2026-01-01" }),
+    ).rejects.toThrow(/kg like 0.5/);
+    const [weightRule] = await db.select().from(schema.shippingRule).where(eq(schema.shippingRule.name, "Weight"));
+    await deleteShippingRule(db, scope, conn.storeId, weightRule!.id);
+    await variantWeights(400);
+    await profit.recalcStore(conn.storeId);
 
     expect(await gatewaySummary(db, scope, conn.storeId)).toEqual([expect.objectContaining({ gateway: "shopify_payments", payments: 1, with_actual_fees: 1 })]);
     await saveGatewayRule(db, scope, conn.storeId, { gateway: "paypal", percentRate: "2.6", fixedFee: "0.30", thirdPartyFeeApplies: true, effectiveFrom: "2026-01-01" });

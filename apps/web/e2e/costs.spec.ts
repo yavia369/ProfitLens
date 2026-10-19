@@ -194,4 +194,37 @@ test("configure costs for a connected store and see profit recalculated", async 
   const pdf = await page.request.get((await page.getByRole("link", { name: "PDF" }).getAttribute("href"))!);
   expect(pdf.headers()["content-type"]).toBe("application/pdf");
   expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
+
+  // Team (desktop only, to stay inside the sign-up rate limit): invite an editor by one-time link.
+  if (test.info().project.name !== "desktop") return;
+  const invitee = `e2e-invitee-${Date.now()}@example.com`;
+  await page.goto("/settings/team");
+  await page.getByLabel("Email", { exact: true }).fill(invitee);
+  await page.getByLabel("Role", { exact: true }).selectOption("editor");
+  await page.getByRole("button", { name: "Create invitation" }).click();
+  const link = await page.getByLabel("Invitation link").inputValue();
+  expect(link).toMatch(/\/invite\/[A-Za-z0-9_-]{40,}$/);
+  await expect(page.getByText(`${invitee} · Editor`)).toBeVisible();
+  await page.context().clearCookies();
+
+  await page.goto(new URL(link).pathname);
+  await expect(page.getByRole("heading", { name: "Join Cost Tester's workspace" })).toBeVisible();
+  await page.getByRole("link", { name: "Create an account" }).click();
+  await expect(page.getByLabel("Email")).toHaveValue(invitee);
+  await page.getByRole("textbox", { name: "Name" }).fill("Invited Editor");
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/invite/**");
+  await page.getByRole("button", { name: "Accept invitation" }).click();
+  await page.waitForURL("**/dashboard**");
+  // The invitee now works in the inviter's workspace as an editor: they see its store, and cannot invite.
+  await page.goto(`/costs/products?${q}`);
+  await expect(page.getByText("Sneaker").first()).toBeVisible();
+  await page.goto("/settings/team");
+  await expect(page.getByText("Cost Tester's workspace").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Invite someone" })).toHaveCount(0);
+  await expect(page.getByText("Your workspaces")).toBeVisible();
+  // The link is single-use.
+  await page.goto(new URL(link).pathname);
+  await expect(page.getByText("This invitation has already been used.")).toBeVisible();
 });

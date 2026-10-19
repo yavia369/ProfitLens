@@ -1,4 +1,5 @@
-import { boolean, char, index, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, char, index, pgEnum, pgTable, text, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, rate, tsz, updatedAt } from "./_columns";
 import { user } from "./auth";
 
@@ -27,6 +28,31 @@ export const membership = pgTable(
     createdAt: createdAt(),
   },
   (t) => [unique("membership_org_user_uq").on(t.organizationId, t.userId), index("membership_user_idx").on(t.userId)],
+);
+
+/**
+ * Invitation to join an organization. Bound to an email address; only a SHA-256 hash of the one-time token is
+ * stored, so the link cannot be recovered from the database. One open invitation per email and organization.
+ */
+export const invitation = pgTable(
+  "invitation",
+  {
+    id: id(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** Lower-cased. */
+    email: text("email").notNull(),
+    role: memberRole("role").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    invitedByUserId: text("invited_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    expiresAt: tsz("expires_at").notNull(),
+    acceptedAt: tsz("accepted_at"),
+    acceptedByUserId: text("accepted_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    revokedAt: tsz("revoked_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("invitation_open_uq").on(t.organizationId, t.email).where(sql`accepted_at is null and revoked_at is null`)],
 );
 
 export const storeStatus = pgEnum("store_status", ["pending", "active", "disconnected", "uninstalled"]);

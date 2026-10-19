@@ -12,7 +12,7 @@ import { FormMessage } from "./form-message";
 export interface ShippingRuleValues {
   id: string;
   name: string;
-  type: "per_order" | "per_item" | "first_plus_additional" | "tiered_quantity";
+  type: "per_order" | "per_item" | "first_plus_additional" | "tiered_quantity" | "tiered_weight";
   params: Record<string, unknown>;
   countryCodes: string[] | null;
   priority: number;
@@ -25,16 +25,25 @@ const TYPES = [
   { value: "per_item", label: "Amount per item" },
   { value: "first_plus_additional", label: "First item + each additional item" },
   { value: "tiered_quantity", label: "Total by number of items (tiers)" },
+  { value: "tiered_weight", label: "Total by shipment weight (tiers)" },
 ] as const;
 
 const trim = (v: unknown) => (typeof v === "string" ? plainAmount(v) : "");
+/** Grams → kg as a decimal string without floating point (e.g. 1500 → "1.500"). */
+const gramsToKg = (g: number) => {
+  const str = String(Math.trunc(g)).padStart(4, "0");
+  return `${str.slice(0, -3)}.${str.slice(-3)}`;
+};
 
 /** Create or edit a shipping-cost rule (what the store pays the carrier, not what the customer pays). */
 export function ShippingRuleSheet({ storeId, currency, rule, defaultFrom }: { storeId: string; currency: string; rule?: ShippingRuleValues; defaultFrom: string }) {
   const [state, action, pending] = useActionState<ActionState | null, FormData>(saveShippingRuleAction, null);
   const [type, setType] = useState<ShippingRuleValues["type"]>(rule?.type ?? "per_order");
-  const initialTiers = Array.isArray(rule?.params.tiers) ? (rule.params.tiers as { minQuantity: number; amount: string }[]) : [];
-  const [tiers, setTiers] = useState(initialTiers.length ? initialTiers.map((t) => ({ min: String(t.minQuantity), amount: trim(t.amount) })) : [{ min: "1", amount: "" }, { min: "", amount: "" }]);
+  const initialTiers = Array.isArray(rule?.params.tiers) ? (rule.params.tiers as { minQuantity?: number; minGrams?: number; amount: string }[]) : [];
+  // Weight tiers are stored in grams and edited in kg (string arithmetic via plainAmount, no float maths).
+  const tierMin = (t: { minQuantity?: number; minGrams?: number }) => (t.minGrams !== undefined ? plainAmount(gramsToKg(t.minGrams)) : String(t.minQuantity ?? ""));
+  const [tiers, setTiers] = useState(initialTiers.length ? initialTiers.map((t) => ({ min: tierMin(t), amount: trim(t.amount) })) : [{ min: "", amount: "" }, { min: "", amount: "" }]);
+  const byWeight = type === "tiered_weight";
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -85,10 +94,22 @@ export function ShippingRuleSheet({ storeId, currency, rule, defaultFrom }: { st
             </div>
           ) : (
             <fieldset className="grid gap-2">
-              <legend className="mb-1 text-sm font-medium">Tiers (total shipping cost from N items)</legend>
+              <legend className="mb-1 text-sm font-medium">{byWeight ? "Tiers (total shipping cost from a shipment weight)" : "Tiers (total shipping cost from N items)"}</legend>
+              {byWeight ? (
+                <p className="text-xs text-muted-foreground">
+                  Uses each variant&apos;s weight from Shopify. An order with an item without a weight (0 g in Shopify) gets no shipping cost and is flagged as missing.
+                </p>
+              ) : null}
               {tiers.map((t, i) => (
                 <div key={i} className="grid grid-cols-2 gap-3">
-                  <Input name="tierMin" inputMode="numeric" aria-label={`Tier ${i + 1}: from items`} placeholder="From items" value={t.min} onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))} />
+                  <Input
+                    name="tierMin"
+                    inputMode={byWeight ? "decimal" : "numeric"}
+                    aria-label={`Tier ${i + 1}: ${byWeight ? "from kg" : "from items"}`}
+                    placeholder={byWeight ? "From kg" : "From items"}
+                    value={t.min}
+                    onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))}
+                  />
                   <Input name="tierAmount" inputMode="decimal" aria-label={`Tier ${i + 1}: total cost`} placeholder="Total cost" value={t.amount} onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
                 </div>
               ))}

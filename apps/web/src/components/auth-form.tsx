@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -7,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 
-export function AuthForm({ mode }: { mode: "login" | "signup" }) {
+/** `next` is an already-validated internal path (see safeNext); `email` pre-fills the field (e.g. from an invitation). */
+export function AuthForm({ mode, next = null, email: defaultEmail }: { mode: "login" | "signup"; next?: string | null; email?: string | undefined }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -28,7 +30,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       setError(result.error.message ?? "Something went wrong. Please try again.");
       return;
     }
-    router.replace("/dashboard");
+    router.replace((next ?? "/dashboard") as Route);
     router.refresh();
   }
 
@@ -48,7 +50,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       ) : null}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" autoComplete="email" required />
+        <Input id="email" name="email" type="email" autoComplete="email" required defaultValue={defaultEmail} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="password">Password</Label>
@@ -78,11 +80,11 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       <p className="text-center text-sm text-muted-foreground">
         {mode === "signup" ? (
           <>
-            Already have an account? <Link className="font-medium text-primary hover:underline" href="/login">Sign in</Link>
+            Already have an account? <Link className="font-medium text-primary hover:underline" href={(next ? `/login?next=${encodeURIComponent(next)}` : "/login") as Route}>Sign in</Link>
           </>
         ) : (
           <>
-            New to ProfitLens? <Link className="font-medium text-primary hover:underline" href="/signup">Create an account</Link>
+            New to ProfitLens? <Link className="font-medium text-primary hover:underline" href={(next ? `/signup?next=${encodeURIComponent(next)}` : "/signup") as Route}>Create an account</Link>
           </>
         )}
       </p>

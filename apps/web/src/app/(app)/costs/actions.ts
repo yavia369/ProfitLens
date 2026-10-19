@@ -1,5 +1,6 @@
 "use server";
 
+import { dec } from "@profitlens/finance";
 import {
   applyCostImport,
   applyRecalc,
@@ -169,6 +170,16 @@ function shippingParams(form: FormData): ShippingRuleFormInput["params"] {
         .filter((t) => t.min !== "" || t.amount !== "")
         .map((t) => ({ minQuantity: Number(t.min), amount: t.amount }));
       return { type: "tiered_quantity", tiers };
+    }
+    case "tiered_weight": {
+      const amounts = form.getAll("tierAmount").map(String);
+      const tiers = form
+        .getAll("tierMin")
+        .map((min, i) => ({ min: String(min).trim(), amount: (amounts[i] ?? "").trim() }))
+        .filter((t) => t.min !== "" || t.amount !== "")
+        // kg (up to 3 decimals) → whole grams with decimal arithmetic; anything else fails validation.
+        .map((t) => ({ minGrams: /^\d+(\.\d{1,3})?$/.test(t.min) ? Number(dec(t.min).times(1000).toFixed(0)) : Number.NaN, amount: t.amount }));
+      return { type: "tiered_weight", tiers };
     }
     default:
       return { type: "per_order", amount: str(form, "amount") };

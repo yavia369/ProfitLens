@@ -4,7 +4,7 @@ import { createdAt, id, money, rate, tsz, updatedAt } from "./_columns";
 import { order } from "./orders";
 import { organization, store } from "./tenancy";
 
-export const shippingRuleType = pgEnum("shipping_rule_type", ["per_order", "per_item", "first_plus_additional", "tiered_quantity"]);
+export const shippingRuleType = pgEnum("shipping_rule_type", ["per_order", "per_item", "first_plus_additional", "tiered_quantity", "tiered_weight"]);
 
 /** Merchant-paid shipping cost rules, effective-dated in store-local dates. */
 export const shippingRule = pgTable(

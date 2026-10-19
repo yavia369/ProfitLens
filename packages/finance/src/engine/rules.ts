@@ -11,8 +11,11 @@ export function costVersionOn(versions: readonly UnitCostVersion[] | undefined, 
   return versions?.find((v) => v.from <= date && (v.to === null || date < v.to)) ?? null;
 }
 
-/** Cost of one shipment of `units` shippable units under a rule's parameters. */
-export function shippingRuleAmount(params: ShippingRuleParams, units: number): Decimal {
+/**
+ * Cost of one shipment of `units` shippable units weighing `weightGrams` in total under a rule's parameters.
+ * Null when the rule needs the weight and it is unknown (never guessed).
+ */
+export function shippingRuleAmount(params: ShippingRuleParams, units: number, weightGrams: number | null = null): Decimal | null {
   if (units <= 0) return ZERO;
   switch (params.type) {
     case "per_order":
@@ -26,6 +29,13 @@ export function shippingRuleAmount(params: ShippingRuleParams, units: number): D
       // assumed, the lowest tier applies (a rule always prices a shipment it matches).
       const tiers = [...params.tiers].sort((a, b) => a.minQuantity - b.minQuantity);
       const tier = [...tiers].reverse().find((t) => units >= t.minQuantity) ?? tiers[0];
+      return tier ? dec(tier.amount) : ZERO;
+    }
+    case "tiered_weight": {
+      // Same tier semantics by total shipment weight: the heaviest tier reached, else the lightest tier.
+      if (weightGrams === null) return null;
+      const tiers = [...params.tiers].sort((a, b) => a.minGrams - b.minGrams);
+      const tier = [...tiers].reverse().find((t) => weightGrams >= t.minGrams) ?? tiers[0];
       return tier ? dec(tier.amount) : ZERO;
     }
   }

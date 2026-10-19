@@ -19,8 +19,11 @@ export const metadata = { title: "Shipping costs" };
 const d = (v: string) => formatDate(v, { day: "numeric", month: "short", year: "numeric" });
 const period = (from: string, to: string | null) => (to ? `${d(from)} – ${d(to)} (excl.)` : `From ${d(from)}`);
 
+/** Grams as kg for display (a count, not money). */
+const formatWeight = (g: number) => `${new Intl.NumberFormat("en-AU", { maximumFractionDigits: 3 }).format(g / 1000)} kg`;
+
 function describe(rule: ShippingRuleValues, currency: string): string {
-  const p = rule.params as Record<string, string> & { tiers?: { minQuantity: number; amount: string }[] };
+  const p = rule.params as Record<string, string> & { tiers?: { minQuantity?: number; minGrams?: number; amount: string }[] };
   switch (rule.type) {
     case "per_order":
       return `${formatMoney(p.amount ?? "0", currency)} per order`;
@@ -30,6 +33,8 @@ function describe(rule: ShippingRuleValues, currency: string): string {
       return `${formatMoney(p.first ?? "0", currency)} first item + ${formatMoney(p.additional ?? "0", currency)} each additional`;
     case "tiered_quantity":
       return (p.tiers ?? []).map((t) => `${t.minQuantity}+ items: ${formatMoney(t.amount, currency)}`).join(" · ");
+    case "tiered_weight":
+      return (p.tiers ?? []).map((t) => `${formatWeight(t.minGrams ?? 0)}+: ${formatMoney(t.amount, currency)}`).join(" · ");
   }
 }
 

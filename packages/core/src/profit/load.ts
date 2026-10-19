@@ -117,6 +117,16 @@ export async function loadOrderInputs(db: Database, store: StoreCalcContext, ord
   const salesBy = group(sales, (s) => s.orderId);
   const refundsBy = group(refunds, (r) => r.orderId);
   const refundLinesBy = group(refundLines, (r) => r.rl.refundId);
+  // Weights are inputs only for stores with a weight-based shipping rule (so other stores' hashes don't change).
+  const needsWeight = store.shippingRules.some((r) => r.params.type === "tiered_weight");
+  const weights =
+    needsWeight && variantIds.length
+      ? new Map(
+          (await db.select({ id: schema.variant.id, w: schema.variant.weightGrams }).from(schema.variant).where(inArray(schema.variant.id, variantIds))).map((v) => [v.id, v.w]),
+        )
+      : needsWeight
+        ? new Map<string, number | null>()
+        : null;
   const txBy = group(txs, (t) => t.orderId);
   const disputesBy = group(disputes, (d) => d.orderId);
   const fulfilledOrders = new Set(fulfillments.filter((f) => !FAILED_FULFILLMENT.has(f.status.toUpperCase())).map((f) => f.orderId));
@@ -139,7 +149,15 @@ export async function loadOrderInputs(db: Database, store: StoreCalcContext, ord
         cancelled: o.cancelledAt !== null,
         fulfilled: fulfilledOrders.has(o.id),
         shippingCountryCode: o.shippingCountryCode,
-        lines: orderLines.map((l) => ({ gid: l.shopifyGid, variantId: l.variantId, title: l.title, quantity: l.quantity, isGiftCard: l.isGiftCard, requiresShipping: l.requiresShipping })),
+        lines: orderLines.map((l) => ({
+          gid: l.shopifyGid,
+          variantId: l.variantId,
+          title: l.title,
+          quantity: l.quantity,
+          isGiftCard: l.isGiftCard,
+          requiresShipping: l.requiresShipping,
+          ...(weights ? { weightGrams: (l.variantId ? weights.get(l.variantId) : null) ?? null } : {}),
+        })),
         sales: orderSales.map((s) => ({
           gid: s.saleGid,
           agreementType: s.agreementType,

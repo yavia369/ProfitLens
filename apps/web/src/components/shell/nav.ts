@@ -14,6 +14,7 @@ import {
   Store,
   Truck,
   Users,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 
@@ -57,6 +58,7 @@ export const NAV: readonly { readonly title: string; readonly items: readonly Na
       { href: "/settings/stores", label: "Stores & integrations", icon: Store },
       { href: "/settings/policy", label: "Calculation policy", icon: Scale, storeScoped: true },
       { href: "/settings/sync", label: "Sync center", icon: RefreshCw },
+      { href: "/settings/team", label: "Team", icon: UsersRound },
     ],
   },
 ];

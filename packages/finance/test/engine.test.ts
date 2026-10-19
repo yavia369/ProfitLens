@@ -373,6 +373,24 @@ describe("shipping rules (§5.2)", () => {
     expect(cost([rule("c", { type: "tiered_quantity", tiers: [{ minQuantity: 1, amount: "8" }, { minQuantity: 3, amount: "12" }, { minQuantity: 6, amount: "15" }] })])).toBe("12.00");
   });
 
+  it("tiered by weight: total shipment weight picks the tier; unknown weight is missing, never guessed", () => {
+    const byWeight = rule("w", { type: "tiered_weight", tiers: [{ minGrams: 0, amount: "9" }, { minGrams: 1000, amount: "14" }, { minGrams: 5000, amount: "25" }] });
+    const lines = (w1: number | null, w2: number | null) => [
+      { gid: "L1", variantId: "V1", title: "Sneaker", quantity: 2, isGiftCard: false, requiresShipping: true, weightGrams: w1 },
+      { gid: "L2", variantId: "V2", title: "Socks", quantity: 1, isGiftCard: false, requiresShipping: true, weightGrams: w2 },
+    ];
+    expect(cost([byWeight], { lines: lines(450, 80) })).toBe("9.00"); // 980 g
+    expect(cost([byWeight], { lines: lines(450, 100) })).toBe("14.00"); // exactly 1,000 g
+    expect(cost([byWeight], { lines: lines(2600, 100) })).toBe("25.00"); // 5,300 g
+    const r = computeOrderProfit(order({ lines: lines(450, null) }), ctx({ shippingRules: [byWeight] }), policy());
+    expect(m(r.totals.shippingCost)).toBe("0.00");
+    expect(r.totals.ordersMissingShipping).toBe(1);
+    // 0 g is how Shopify stores "no weight entered": unknown, not weightless.
+    expect(computeOrderProfit(order({ lines: lines(450, 0) }), ctx({ shippingRules: [byWeight] }), policy()).totals.ordersMissingShipping).toBe(1);
+    expect(r.completeness.missing).toContain("shipping");
+    expect(r.components.shipping.source).toContain("needs item weights");
+  });
+
   it("country scope and priority pick the rule; effective dates are [from, to)", () => {
     const rules = [rule("world", { type: "per_order", amount: "20" }, { priority: 200 }), rule("au", { type: "per_order", amount: "8" }, { countryCodes: ["AU"] })];
     expect(cost(rules)).toBe("8.00");

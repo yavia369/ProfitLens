@@ -230,8 +230,17 @@ export function computeOrderProfit(order: OrderInput, ctx: OrderCostContext, pol
     shipping = { amount: ZERO, status: "actual", source: "cancelled before fulfilment" };
   else {
     const rule = selectShippingRule(ctx.shippingRules, order.localDate, order.shippingCountryCode, ctx.storeCurrency);
-    if (rule) shipping = { amount: shippingRuleAmount(rule.params, shippableUnits), status: "rule", source: `rule ${rule.id} (${rule.name})` };
-    else {
+    const shippable = order.lines.filter((l) => l.requiresShipping && !l.isGiftCard);
+    // Shipment weight is known only when every shippable line has a weight. Shopify stores 0 g when no weight
+    // was entered, so 0 g on a shippable item counts as unknown rather than weightless (D-048).
+    const weightGrams = shippable.every((l) => typeof l.weightGrams === "number" && l.weightGrams > 0) ? shippable.reduce((g, l) => g + l.weightGrams! * l.quantity, 0) : null;
+    const amount = rule ? shippingRuleAmount(rule.params, shippableUnits, weightGrams) : null;
+    if (rule && amount) shipping = { amount, status: "rule", source: `rule ${rule.id} (${rule.name})${rule.params.type === "tiered_weight" ? `, ${weightGrams} g` : ""}` };
+    else if (rule) {
+      shipping = { amount: ZERO, status: "missing", source: `rule ${rule.id} (${rule.name}) needs item weights; some items have none` };
+      count(order.localDate, "ordersMissingShipping", 1);
+      missing.add("shipping");
+    } else {
       shipping = { amount: ZERO, status: "missing", source: "no shipping rule matches" };
       count(order.localDate, "ordersMissingShipping", 1);
       missing.add("shipping");
