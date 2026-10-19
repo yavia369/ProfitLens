@@ -1,7 +1,11 @@
 #!/bin/sh
 # Process roles of the ProfitLens image. Usage: web | worker | migrate | cli <command> [args]
+# The role can also come from PROCESS_ROLE (platforms that set variables more easily than commands), and a start
+# command that repeats this script's path (`/app/docker-entrypoint.sh worker`) works whether the platform replaces
+# the entrypoint or passes the command to it.
 set -e
-role="${1:-web}"
+case "${1:-}" in */docker-entrypoint.sh | docker-entrypoint.sh) shift ;; esac
+role="${1:-${PROCESS_ROLE:-web}}"
 [ "$#" -gt 0 ] && shift
 case "$role" in
   healthcheck)

@@ -61,6 +61,21 @@ is confirmed once the owner chooses a host (B5):
 4. Set the environment variables above on both services (same values).
 5. Point a domain with HTTPS at the web service and set `APP_URL` to it.
 
+### Railway (owner's choice, 2026-10-19)
+Railway's docs could not be read from the development container, so the exact menu names are from memory and may
+differ slightly (INFERRED); the image itself was verified with Docker. Summary of the setup:
+
+| Railway service | Source | Settings |
+|---|---|---|
+| **Postgres** | Database → PostgreSQL | Version 16 (`select version();` to check); internal URL used by the two app services |
+| **web** | GitHub repo `yavia369/ProfitLens`, builds the `Dockerfile` | Variable `PROCESS_ROLE=web`; pre-deploy command `/app/docker-entrypoint.sh migrate`; health check path `/api/health`; public domain (port 3000) |
+| **worker** | same repo and `Dockerfile` | Variable `PROCESS_ROLE=worker`; no domain, no health check path; exactly 1 replica |
+
+Both app services get `DATABASE_URL=${{Postgres.DATABASE_URL}}` (Railway reference variable, private network) and
+the same `APP_URL`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEYS`, `ENCRYPTION_ACTIVE_KID`. The role comes from
+`PROCESS_ROLE`, so no custom start command is needed (`/app/docker-entrypoint.sh worker` also works as one).
+The migration `0008` creates the `pg_trgm` extension; Railway's Postgres user owns the database, which is enough.
+
 ## After the first deploy
 1. Open `APP_URL`, sign up (the first account owns its workspace), connect the store (Settings → Stores).
 2. **Shopify webhooks** (changes arrive in seconds instead of up to 15 minutes; the poll keeps running as a safety
