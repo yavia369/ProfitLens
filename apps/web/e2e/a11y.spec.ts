@@ -20,6 +20,11 @@ test("every page passes the axe WCAG 2.2 AA rules in light and dark mode", async
   test.skip(test.info().project.name !== "desktop", "desktop only (sign-up rate limit)");
   test.setTimeout(240_000);
   const problems: string[] = [];
+  // The Content Security Policy (src/proxy.ts) must not block anything the app itself loads.
+  const cspViolations: string[] = [];
+  page.on("console", (m) => {
+    if (/Content Security Policy|Refused to (load|execute|apply)/i.test(m.text())) cspViolations.push(`${page.url()}: ${m.text()}`);
+  });
 
   for (const path of ["/login", "/signup"]) {
     await page.goto(path);
@@ -78,6 +83,7 @@ test("every page passes the axe WCAG 2.2 AA rules in light and dark mode", async
   }
 
   expect(problems, problems.join("\n")).toEqual([]);
+  expect(cspViolations, cspViolations.join("\n")).toEqual([]);
 });
 
 test("keyboard: sign-in form in reading order with a visible focus indicator on every stop", async ({ page }) => {
