@@ -68,9 +68,62 @@ integration design will be added in Phase 2.
 **Live verification:** pending owner setup (B4, `docs/GOOGLE_ADS_SETUP.md`). Until then the client is tested against
 recorded-shape fakes only (UNKNOWN: exact field presence in Luraflo's account responses, access level granted).
 
-## Meta / TikTok (unverified; primary docs blocked)
-- **Meta:** Graph/Marketing API v26.0. `ads_read` with Standard Access is enough for your own ad accounts; other merchants' accounts need Advanced Access through App Review. Daily spend comes from `/act_{id}/insights?level=campaign&time_increment=1`.
-- **TikTok:** Marketing API v1.3 (reported). Requires a developer app, app review and authorization from each advertiser.
+## Phase 8 integrations (checked against current docs, 2026-10-19)
+Labels: DOCUMENTED = read in the provider's current docs/spec; VERIFIED = observed live from this container;
+INFERRED = our reading where the docs are silent.
+
+### FX — ECB reference rates (D-050)
+- Source `www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml` (daily runs) and `eurofxref-hist.xml` (first run
+  or `--full`); no key. 1 EUR = rate; published around 16:00 CET on TARGET business days (DOCUMENTED).
+- File formats VERIFIED live: the 90-day file uses single quotes with line breaks, the history file double quotes on
+  one line; the parser accepts both (fixtures in `packages/core/test/fixtures/ecb/`).
+- Live import 2026-10-19: 22,777 rates over 766 days into `fx_rate`. Worker: `fx.ecb.import` at 15:25 and 21:25 UTC.
+- Conversion: direct, inverse or cross via EUR on the same day, else the latest day within 7 days; never 1:1.
+
+### Meta Marketing API v26.0 (D-051; `packages/meta-ads`, `packages/core/src/ads/meta.ts`)
+- v26.0 is the latest version (released 2026-07-29, DOCUMENTED). System-user token in the `Authorization: Bearer`
+  header; `appsecret_proof` added when the app secret is known (DOCUMENTED).
+- 60-day tokens refresh through `GET /oauth/access_token?grant_type=fb_exchange_token` (DOCUMENTED, system-user
+  docs); ProfitLens refreshes when < 15 days remain.
+- Insights: `/act_{id}/insights?level=campaign&time_increment=1&use_account_attribution_setting=true` in 31-day
+  windows; days are in the ad account's time zone (DOCUMENTED). Platform value = `omni_purchase`, else the pixel
+  purchase action, never summed.
+- Errors (DOCUMENTED, v26 error and rate-limit references): 190 / 2500 → re-authorise; 4, 17, 32, 613,
+  80000–80014 → back off and retry; 10 and 200–299 → permission.
+- Live run: **not possible** — the owner has no Meta ad account connected (TrueProfit `get_connected_platforms`
+  shows Google Ads only). Tested against recorded-shape fakes (meta-ads 9 tests, core ads integration).
+
+### Stripe (D-052; `packages/payments/src/stripe.ts`)
+- API version pinned to `2026-09-30.endive` (latest in the versioning docs, DOCUMENTED).
+- `GET /v1/balance_transactions?created[gte]&created[lt]&limit=100&expand[]=data.source`, paged with
+  `starting_after` (DOCUMENTED). Charge/payment types only; gross from the expanded source (as the customer paid),
+  fee in the balance currency.
+- Amounts in minor units: JPY zero-decimal, ISK/UGX two-decimal (DOCUMENTED); other zero-decimal currencies from
+  Stripe's long-standing list (INFERRED, the page renders dynamically); three-decimal currencies skipped.
+- Error body `{error:{message}}` with 401 for bad keys: VERIFIED live with an invalid key.
+- Restricted-key permission names (Balance, Charges, PaymentIntents: Read) are INFERRED; Stripe's error names a
+  missing permission and ProfitLens shows that message.
+
+### PayPal Transaction Search (D-052; `packages/payments/src/paypal.ts`)
+- OAuth client credentials at `POST /v1/oauth2/token`; `GET /v1/reporting/transactions` with at most 31 days per
+  request, `page_size` up to 500; transactions can appear up to 3 hours after they happen; `fee_amount` is present
+  only when a fee applied (DOCUMENTED, `reporting_transactions_v1` OpenAPI spec). Auth error shape VERIFIED live.
+- Payments = event codes `T00xx` with status `S` (INFERRED from PayPal's event-code families).
+
+### Shopify side of the fee match
+- `OrderTransaction` (Admin API 2026-10) has no processor transaction ID or authorization code, and `receiptJson` is
+  documented as "not a stable contract" (DOCUMENTED via the Shopify MCP schema), so matching uses amount +
+  currency + ±15 minutes with exactly one candidate (D-052). Shopify gateway names containing "stripe"/"paypal"
+  identify candidates (INFERRED).
+- Live run: **not applicable to Luraflo** — its only gateway is Shopify Payments (32 sales + 1 refund, all with
+  Shopify-reported fees). Tested with an in-memory fake of both APIs against real Postgres (core payments 3 tests).
+
+### TikTok Marketing API — BLOCKED
+- The API portal (`business-api.tiktok.com/portal/docs`) loads its content from
+  `sf16-website-login.neutral.ttwstatic.com`, which the container's network policy refuses (re-checked 2026-10-19).
+  The public SDK repository has no response or enum definitions to build against safely. Production access also
+  needs a TikTok developer app, app review and each advertiser's authorization; the owner has no TikTok ad account.
+  Not built; manual TikTok spend entry (Costs → Ad spend) remains available.
 
 ## Shopify implementation (Phase 4)
 | Piece | Where | Notes |
@@ -116,5 +169,7 @@ Design details are in `ARCHITECTURE.md` §4 (Shopify) and §5 (Google Ads).
 | Shopify | Dev Dashboard app (custom distribution) installed on Luraflo; client credentials grant for own stores (D-026), auth code grant + expiring offline tokens for other merchants later; bulk backfill + webhooks + 15-min safety poll + nightly reconciliation | Create the app in Shopify Dev Dashboard (or let us guide it); approve install on Luraflo; request `read_all_orders` | Phase 4 approval |
 | Google Ads | REST v26 searchStream; OAuth web client in the owner's Google Cloud project; Explorer access (auto) | Google Cloud project, OAuth consent screen (published), OAuth client ID/secret, redirect URI on the deployed domain | Phase 6 |
 | Manual ad spend | Always available (`ad_spend_daily.source = manual`) | — | — |
-| FX rates | Provider interface; default ECB daily reference rates (no key), fallback openexchangerates (key) | Allow the FX host on the network (blocked in this dev container) | Multi-currency live data |
-| Meta / TikTok | Phase 8 | Meta app (Standard Access for own ad accounts) / TikTok app review | Phase 8 |
+| FX rates | ECB daily reference rates (no key), imported twice daily (Phase 8) | — | Done |
+| Meta | System-user token, daily campaign insights (Phase 8, D-051) | Business Manager app + system user (`docs/META_ADS_SETUP.md`) | Live run needs a Meta ad account |
+| TikTok | Not built | TikTok developer app, app review, advertiser authorization; docs CDN host allowed | Blocked (see above) |
+| Stripe / PayPal | Read-only fee import + amount/time matching (Phase 8, D-052) | Restricted key / REST app with Transaction Search (`docs/PAYMENT_GATEWAYS_SETUP.md`) | Live run needs a store paid through them |

@@ -74,3 +74,11 @@ Implemented on the **demo data source only** (live data arrives with Phases 4–
 | Team: invite by one-time link, roles (owner/admin/editor/viewer), change role, remove, leave, last-owner guard, workspace switch | Done, integration + e2e tested; no email sending yet (link shared by the inviter) |
 | Weight-tiered shipping rules | Done; Luraflo variants mostly have 0 g in Shopify, which the rule treats as unknown (D-048) |
 | Pixel-based multi-touch attribution, AI bill extraction, email reports | Not in M2 scope |
+
+## Phase 8 status (2026-10-19)
+| Feature | Status |
+|---|---|
+| FX: ECB reference rates imported daily (3-year history on first run); multi-currency store comparison consolidated into a chosen currency; foreign-currency ad spend converted | Done; live import VERIFIED (22,777 rates, 766 days); unit + integration tested |
+| Meta Ads: system-user token (60-day refresh with app ID/secret), account discovery, store mapping, daily campaign spend + Meta-reported purchase value, 6-hourly sync with 3-day restatement window | Done, tested against recorded-shape fakes; **no live run** (owner has no Meta ad account) |
+| TikTok Ads API | **Blocked**: docs portal CDN host refused by the network policy; needs app review and an advertiser account. Manual TikTok spend remains available |
+| Stripe / PayPal fees: read-only import, match to Shopify payments by amount + currency ± 15 min (exactly one candidate), actual fee on matched orders, reconciliation list of unmatched/ambiguous payments | Done, unit + integration + e2e tested; **not applicable to Luraflo** (Shopify Payments only, fees already actual) |

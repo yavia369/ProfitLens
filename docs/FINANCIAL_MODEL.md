@@ -5,7 +5,7 @@
 > Shopify field semantics are cited from shopify.dev 2026-10 docs. Items marked **[verify]** must be
 > confirmed against real orders in Phase 4 (fixture tests capture the confirmed behaviour).
 >
-> **Implementation (Phase 5, 2026-10-19):** `packages/finance/src/engine` (engine version 1.0.1), tests in
+> **Implementation (Phase 5, 2026-10-19):** `packages/finance/src/engine` (engine version 1.0.1; 1.1.0 since Phase 8 adds matched processor fees, §5.4 step 5), tests in
 > `packages/finance/test/engine.test.ts`. Interpretations and choices made while implementing are recorded as
 > D-033…D-040; the ones based on unverified Shopify semantics are D-036 (INFERRED). Verified on Luraflo: revenue
 > per day equals Shopify's net sales; `SalesAgreement`/`Sale` handling; refund dating; Shopify Payments fees.
@@ -151,6 +151,12 @@ For each successful money-in transaction (`kind ∈ {SALE, CAPTURE}`, `status = 
 3. **Shopify third-party fee:** for non-Shopify-Payments gateways, + amount × `store.thirdPartyFeeRate`
    (depends on plan; waived for gateways in the waiver list; 0 for manual gateways). Status `rule`.
 4. Otherwise status `missing`, except for manual payment methods, which have 0 fee and status `actual`.
+5. **Matched processor fee (Phase 8, D-052):** when Shopify reports no fee and a connected Stripe or PayPal
+   payment is matched to the transaction (same amount and currency within ±15 minutes, exactly one candidate,
+   uncontested), fee = the processor's fee (converted to store currency at the day's rate when it differs; no
+   rate → not used) + the Shopify third-party fee from step 3. Status `actual`, source "Stripe/PayPal fee
+   (matched <processor id>)". This takes precedence over step 2; Shopify-reported fees (step 1) are never replaced.
+   Unmatched or ambiguous processor payments change nothing (the rule estimate stays) and are listed for review.
 
 Refund transactions don't return fees unless `policy.feesRefundedOnRefund` (default false).
 Fee date = transaction processed local date.

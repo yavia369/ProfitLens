@@ -3,14 +3,14 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 8 — Additional integrations: IN PROGRESS** (2026-10-19). Scope confirmed by the owner: full M3,
-verified against current docs (network hosts to be allowed by the owner, B9). Phase 7 approved by the owner on 2026-10-19
-("CONFIRM PHASE 7"). Phase 6 was approved with the live Google Ads check deferred until the owner completes B4
-(resume steps below still apply).
+**Phase 8 — Additional integrations: COMPLETE, awaiting owner approval** ("CONFIRM PHASE 8") (2026-10-19).
+Scope confirmed by the owner: full M3, verified against current docs; hosts allowed by the owner (B9). TikTok is
+blocked (docs CDN host + app review, see below). Phase 7 approved on 2026-10-19 ("CONFIRM PHASE 7"). Phase 6 was
+approved with the live Google Ads check deferred until the owner completes B4 (resume steps below still apply).
 
 Phase 8 scoping facts (2026-10-19): the owner's only connected ad platform is Google Ads (TrueProfit
 `get_connected_platforms`: no Meta, TikTok or others); Luraflo's only payment gateway is Shopify Payments (33
-transactions, exact fees already); 31 of 32 orders carry `utm_source=google`. Every Phase 8 host is blocked by the
+transactions, exact fees already); 31 of 32 orders carry `utm_source=google`. Every Phase 8 host was initially blocked by the
 container network policy: graph.facebook.com, developers.facebook.com, business-api.tiktok.com, api.stripe.com,
 docs.stripe.com, api-m.paypal.com, developer.paypal.com and all FX sources (B2).
 
@@ -53,11 +53,14 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 3. `DATABASE_URL=postgres://profitlens:profitlens@localhost:5432/profitlens pnpm db:migrate`.
 4. To reload Luraflo: sign up a local user in the web app, then `pnpm --filter @profitlens/worker sync connect <email>`,
    `… sync backfill <storeId>` (also computes profit), `… sync status`. `… sync recalc <storeId> [--force]` recomputes results.
-5. Migrations now go up to `0005_team_weight_shipping` (invitations, weight-tiered shipping).
+5. Migrations now go up to `0006_payment_gateways` (Stripe/PayPal connections and imported payments).
 6. In this container Node's `fetch` only uses the egress proxy with `NODE_USE_ENV_PROXY=1` (e.g.
    `NODE_USE_ENV_PROXY=1 pnpm --filter @profitlens/worker sync fx-import`). Production has direct egress.
 7. Exchange rates: `… sync fx-import` (first run: 3 years of ECB history; later: the 90-day file). The worker
    imports daily at 15:25 and 21:25 UTC.
+8. Meta: `… sync meta-connect <email>` (env `META_SYSTEM_USER_TOKEN`, optional `META_APP_ID`/`META_APP_SECRET`).
+   Stripe/PayPal: `… sync payments-connect <email> <storeId> stripe|paypal` (env `STRIPE_SECRET_KEY` or
+   `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET`), `… payments-status <email>`, `… payments-sync <connectionId>`.
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
@@ -125,9 +128,19 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
   - Settings → Team (one-time email-bound invitation links, roles, last-owner guard, workspace switch);
   - weight-tiered shipping rules; migration `0005_team_weight_shipping`.
 
+- Phase 8 (2026-10-19; `docs/FEATURE_PARITY.md` "Phase 8 status", `docs/INTEGRATIONS.md` "Phase 8 integrations",
+  D-050…D-052, FINANCIAL_MODEL §5.4 step 5):
+  - FX: ECB rate import (worker twice daily, CLI `fx-import`; live: 22,777 rates over 766 days) and day-by-day
+    FX consolidation of multi-currency store comparisons; foreign-currency ad spend converted;
+  - Meta Ads (`packages/meta-ads`): system-user token with 60-day refresh, discovery, mapping, 6-hourly campaign
+    spend + platform value sync; Settings card; setup guide `docs/META_ADS_SETUP.md`;
+  - Stripe/PayPal (`packages/payments`, `core/payments`): read-only import, amount + time matching, actual fee on
+    matched orders (engine 1.1.0), unmatched list in Settings; worker queue every 6 h; guide
+    `docs/PAYMENT_GATEWAYS_SETUP.md`; migration `0006_payment_gateways`;
+  - TikTok: not built (blocked, see B10).
+
 ## In progress
-- Phase 8: item 1 consolidation done (D-050, commit 45c6466: day-by-day FX conversion from stored rates; tests
-  177 → 182). Rate import (item 1 provider) and items 2–5 wait for B9. Phase 6 live verification pending B4.
+- Waiting for "CONFIRM PHASE 8". Phase 6 live verification still pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -140,7 +153,10 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 - Disputes not linked to an order are stored but not costed.
 - Tax-inclusive pricing, fee tax and lost-chargeback refunds are implemented per D-036 but unverified on real data.
 - Webhooks cannot be received in development (D-029).
-- P&L consolidation across currencies is not available until an FX rate source exists (B2); the page says why.
+- Meta, Stripe and PayPal are tested against recorded-shape fakes only: the owner has no Meta ad account, and
+  Luraflo takes payments only through Shopify Payments.
+- Processor refund and dispute fees are not imported; matching relies on Shopify gateway names containing
+  "stripe"/"paypal" (INFERRED).
 - Cohorts and LTV only see stored history: without `read_all_orders` (B7) Luraflo's history starts 2026-10-05, so
   earlier customers count as new (shown as a warning).
 - UTM-modeled attribution needs orders tagged with `utm_campaign`; Google auto-tagging alone (gclid) is not matched.
@@ -152,21 +168,23 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | # | Item | Needed by |
 |---|---|---|
 | B1 | ~~GitHub repo~~ RESOLVED: `yavia369/ProfitLens` (private since 2026-10-18). | — |
-| B2 | Network: Shopify + Google hosts now allowed (verified 2026-10-18). Still blocked: FX-rate hosts (openexchangerates.org, ECB, frankfurter), `app.trueprofit.io`, `be.trueprofit.io`, `developers.facebook.com` | FX needed for multi-currency tests against live rates (Phase 5+) |
+| B2 | Network: Shopify, Google, ECB and Phase 8 provider hosts allowed. Still blocked: `app.trueprofit.io`, `be.trueprofit.io` (reference only) | — |
 | B3 | ~~Shopify app + env vars~~ RESOLVED 2026-10-19 (connected, verified). | — |
 | B7 | Optional: `read_all_orders` for full history (today 1 order, #1001 from 2026-07-27, is outside the 60-day window). Unknown whether a Dev Dashboard app can be granted it | Before relying on history older than 60 days |
 | B8 | **Owner action:** Luraflo has no product costs (41 sold variants, 7,817 total) and no shipping rule, so every order is flagged incomplete and profit is overstated. Enter costs on Product costs (export CSV → fill → import), add a shipping rule and the running expenses (Shopify plan, apps) | Accurate profit figures |
 | B6 | Webhook delivery needs a public URL; until Phase 9 the 15-min poll covers it (D-029) | Phase 9 |
 | B4 | **Owner action:** Google Cloud project with Google Ads API Explorer access + service account key, added as a read-only user in Google Ads — steps in `docs/GOOGLE_ADS_SETUP.md` (sent 2026-10-19) | Phase 6 live verification |
-| B9 | **Owner action (Phase 8):** allow in the environment's network settings: graph.facebook.com, developers.facebook.com, business-api.tiktok.com, ads.tiktok.com, api.stripe.com, docs.stripe.com, api-m.paypal.com, developer.paypal.com, and www.ecb.europa.eu (or api.frankfurter.app). Live runs also need the matching accounts/apps | Phase 8 verification |
+| B9 | ~~Network allow-list for Phase 8~~ RESOLVED 2026-10-19 (Meta, Stripe, PayPal, ECB, TikTok portal reachable). B2's FX part is resolved by the ECB host | — |
+| B10 | **Owner action (optional, TikTok):** allow `sf16-website-login.neutral.ttwstatic.com` (the TikTok API portal loads its docs from it), and for live use: a TikTok developer app with app review plus a TikTok ad account | TikTok Ads integration |
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Owner: B9 (network allow-list for Phase 8); B4 (Google Ads access, then "Continue Phase 6" for the live
-   check); B8 (Luraflo costs, shipping rule, expenses).
-2. Phase 8 (after approval), per the master brief.
+1. Owner: review the Phase 8 report and reply "CONFIRM PHASE 8"; optionally B10 (TikTok); B4 (Google Ads access,
+   then "Continue Phase 6" for the live check); B8 (Luraflo costs, shipping rule, expenses).
+2. Phase 9 (after approval), per the master brief.
 
 ## Test results
+- 2026-10-19 (Phase 8): `pnpm test` 209/209, `pnpm typecheck`, `next build`, Playwright 12/12; live ECB import; Luraflo recalculated on engine 1.1.0.
 - 2026-10-19 (Phase 7): `pnpm test` 177/177, `pnpm typecheck`, `next build`, Playwright 12/12; Luraflo customers = ShopifyQL.
 - 2026-10-19 (Phase 6): `pnpm test` 148/148, `pnpm typecheck`, `next build`, Playwright 12/12; live Google Ads run pending B4.
 - 2026-10-19 (Phase 5): `pnpm test` 129/129, `pnpm typecheck`, `next build`, Playwright 12/12; live Luraflo checks pass.
