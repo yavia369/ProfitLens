@@ -3,8 +3,15 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 7 — Advanced analytics: COMPLETE, awaiting owner approval ("CONFIRM PHASE 7")** (2026-10-19). Phase 6 was
-approved on 2026-10-19 with the live Google Ads check deferred until the owner completes B4 (resume steps below still apply).
+**Phase 8 — Additional integrations: PLANNING** (2026-10-19). Phase 7 approved by the owner on 2026-10-19
+("CONFIRM PHASE 7"). Phase 6 was approved with the live Google Ads check deferred until the owner completes B4
+(resume steps below still apply).
+
+Phase 8 scoping facts (2026-10-19): the owner's only connected ad platform is Google Ads (TrueProfit
+`get_connected_platforms`: no Meta, TikTok or others); Luraflo's only payment gateway is Shopify Payments (33
+transactions, exact fees already); 31 of 32 orders carry `utm_source=google`. Every Phase 8 host is blocked by the
+container network policy: graph.facebook.com, developers.facebook.com, business-api.tiktok.com, api.stripe.com,
+docs.stripe.com, api-m.paypal.com, developer.paypal.com and all FX sources (B2). Scope to be confirmed with the owner.
 `SHOPIFY_*` are cloud environment variables. **Never ask for these or Google credentials in chat, never print them.**
 
 Phase 7 plan (PRODUCT_REQUIREMENTS M2):
@@ -104,7 +111,7 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
   - weight-tiered shipping rules; migration `0005_team_weight_shipping`.
 
 ## In progress
-- Nothing: Phase 7 is waiting for owner approval. Phase 6 live verification still pending B4.
+- Phase 8 scope confirmation with the owner. Phase 6 live verification still pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -138,7 +145,7 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Owner: review Phase 7 and reply "CONFIRM PHASE 7"; B4 (Google Ads access, then "Continue Phase 6" for the live
+1. Owner: confirm the Phase 8 scope; B4 (Google Ads access, then "Continue Phase 6" for the live
    check); B8 (Luraflo costs, shipping rule, expenses).
 2. Phase 8 (after approval), per the master brief.
 
