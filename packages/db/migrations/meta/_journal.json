@@ -43,6 +43,13 @@
       "when": 1792400986615,
       "tag": "0005_team_weight_shipping",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792406881107,
+      "tag": "0006_payment_gateways",
+      "breakpoints": true
     }
   ]
 }

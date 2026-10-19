@@ -2,7 +2,7 @@ import type { Decimal, MoneyString } from "../money";
 import type { LocalDate } from "../dates";
 
 /** Bump on any change to calculation semantics (FINANCIAL_MODEL header); stored with every result. */
-export const ENGINE_VERSION = "1.0.1";
+export const ENGINE_VERSION = "1.1.0";
 
 export type CostStatus = "actual" | "rule" | "manual" | "estimated" | "missing";
 
@@ -64,9 +64,14 @@ export interface EngineTransaction {
   readonly manual: boolean;
   readonly amount: MoneyString;
   readonly localDate: LocalDate | null;
-  /** Σ Shopify-reported fee amounts; null when Shopify reports no fee data. */
+  /** Σ Shopify-reported fee amounts, or a matched gateway fee (see feeSource); null when no fee data. */
   readonly feeAmount: MoneyString | null;
   readonly feeTaxAmount: MoneyString | null;
+  /**
+   * Set when feeAmount comes from the payment gateway itself (a PayPal/Stripe record matched to this payment,
+   * D-052) rather than from Shopify. Shopify's third-party transaction fee is then still added.
+   */
+  readonly feeSource?: string;
 }
 
 export interface EngineDispute {

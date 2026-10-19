@@ -15,6 +15,10 @@ export const QUEUES = {
   reconcileAll: "shopify.reconcile-all",
   /** ECB reference rates into fx_rate (daily, after ECB publishes around 16:00 CET). */
   fxImport: "fx.ecb.import",
+  /** Stripe/PayPal payments and fee matching for one payment connection ({ connectionId }). */
+  paymentsSync: "payments.sync",
+  /** Cron fan-out: sync every active payment connection. */
+  paymentsSyncAll: "payments.sync-all",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -27,6 +31,10 @@ export interface AdsJob {
   accountId: string;
   /** Re-import the full history instead of the last days. */
   full?: boolean;
+}
+
+export interface PaymentsJob {
+  connectionId: string;
 }
 
 export interface OrderJob extends StoreJob {
@@ -58,4 +66,8 @@ export function enqueueRecalcStore(boss: JobSender, storeId: string) {
 
 export function enqueueAdsSync(boss: JobSender, accountId: string, full = false) {
   return boss.send(QUEUES.adsSync, { accountId, full } satisfies AdsJob, { ...retry, singletonKey: accountId });
+}
+
+export function enqueuePaymentsSync(boss: JobSender, connectionId: string) {
+  return boss.send(QUEUES.paymentsSync, { connectionId } satisfies PaymentsJob, { ...retry, singletonKey: connectionId });
 }

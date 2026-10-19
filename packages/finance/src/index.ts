@@ -9,3 +9,4 @@ export * from "./customers";
 export * from "./ads";
 export * from "./allocation";
 export * from "./fx";
+export * from "./gateway";

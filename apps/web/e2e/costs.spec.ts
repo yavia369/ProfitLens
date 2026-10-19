@@ -176,6 +176,38 @@ test("configure costs for a connected store and see profit recalculated", async 
   await expect(page.getByLabel("Store for E2E Google Ads")).toHaveValue(storeId);
   await expect(page.getByLabel("Sync")).toBeChecked();
 
+  // Payment processors: malformed credentials are rejected before anything is sent to Stripe or PayPal.
+  await page.getByLabel("Restricted API key").fill("pk_live_not-a-secret-key");
+  await page.getByRole("button", { name: "Connect Stripe" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "This is not a Stripe secret or restricted key" })).toBeVisible();
+  await page.getByLabel("Processor").selectOption("paypal");
+  await page.getByLabel("REST app client ID").fill("short");
+  await page.getByLabel("Client secret", { exact: true }).last().fill("short");
+  await page.getByRole("button", { name: "Connect PayPal" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Enter the PayPal REST app's client ID and secret." })).toBeVisible();
+  // A connection with a processor payment that matched no Shopify payment lists it with the reason.
+  const pgc = new pg.Client({ connectionString: DATABASE_URL });
+  await pgc.connect();
+  try {
+    const { rows: pc } = await pgc.query(
+      `insert into payment_connection (organization_id, store_id, gateway, display_name, credentials_enc)
+       select organization_id, id, 'paypal', 'PayPal (E2E)', 'not-used' from store where id = $1 returning id`,
+      [storeId],
+    );
+    await pgc.query(
+      `insert into gateway_transaction (connection_id, store_id, external_id, occurred_at, amount, currency, fee, fee_currency, match_status, match_reason)
+       values ($1, $2, 'E2EPAYPAL1', now(), '55.00', 'AUD', '1.80', 'AUD', 'unmatched', 'No Shopify payment of 55.00 AUD within 15 minutes')`,
+      [pc[0].id, storeId],
+    );
+  } finally {
+    await pgc.end();
+  }
+  await page.reload();
+  await expect(page.getByText("0 matched · 1 on the estimated fee")).toBeVisible();
+  await page.getByText(/Unmatched payments \(1\)/).click();
+  await expect(page.getByRole("cell", { name: "E2EPAYPAL1" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "No Shopify payment of 55.00 AUD within 15 minutes" })).toBeVisible();
+
   // P&L: a second live store in the same currency enables the side-by-side view with a consolidated column.
   const client = new pg.Client({ connectionString: DATABASE_URL });
   await client.connect();

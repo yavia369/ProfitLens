@@ -2,6 +2,7 @@
 
 import { AdsSyncService, connectGoogleAdsServiceAccount, connectMetaSystemUser, GoogleAdsError, mapAdAccount, MetaAdsError } from "@profitlens/core/ads";
 import { enqueueBackfill, enqueueIncremental, QUEUES } from "@profitlens/core/jobs";
+import { connectPaymentGateway, GatewayApiError, syncPaymentGateway, type GatewaySyncResult } from "@profitlens/core/payments";
 import { connectStoreWithClientCredentials, ConnectionError } from "@profitlens/core/shopify";
 import { assertRole, assertStoresInScope, schema, TenantAccessError } from "@profitlens/db";
 import { eq } from "drizzle-orm";
@@ -140,5 +141,59 @@ export async function syncAdAccountAction(accountId: string): Promise<ActionStat
     return { ok: true, message };
   } catch (e) {
     return adsError(e);
+  }
+}
+
+// ---------------------------------------------------------------- Payment processors (Stripe, PayPal)
+
+function paymentsError(e: unknown): ActionState {
+  if (e instanceof GatewayApiError || e instanceof TenantAccessError) return { ok: false, message: e.message };
+  console.error("payments action", e);
+  return { ok: false, message: "Unexpected error talking to the payment processor. Nothing was changed." };
+}
+
+function syncSummary(r: GatewaySyncResult): string {
+  const open = r.unmatched + r.ambiguous;
+  return `Imported ${r.imported} payment${r.imported === 1 ? "" : "s"}: ${r.matched} matched to Shopify orders, ${open} left on the estimated fee${r.ordersRecalculated ? `; ${r.ordersRecalculated} order${r.ordersRecalculated === 1 ? "" : "s"} recalculated` : ""}.`;
+}
+
+export async function connectPaymentGatewayAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const session = await requireAppSession();
+  const gateway = form.get("gateway");
+  const storeId = String(form.get("storeId") ?? "");
+  if (gateway !== "stripe" && gateway !== "paypal") return { ok: false, message: "Choose Stripe or PayPal." };
+  if (!storeId) return { ok: false, message: "Choose the store whose payments this account takes." };
+  const field = (name: string) => String(form.get(name) ?? "").trim();
+  try {
+    const { connectionId } = await connectPaymentGateway(adsDeps(), session.scope, {
+      storeId,
+      gateway,
+      ...(gateway === "stripe" ? { secretKey: field("secretKey") } : { clientId: field("clientId"), clientSecret: field("clientSecret") }),
+    });
+    revalidatePath("/settings/stores");
+    try {
+      const r = await syncPaymentGateway(adsDeps(), connectionId);
+      revalidatePath("/", "layout");
+      return { ok: true, message: `Connected. ${syncSummary(r)}` };
+    } catch (e) {
+      // The connection is kept; the scheduled sync retries, and "Sync now" can be used after fixing access.
+      return { ok: false, message: `Connected, but the first import failed: ${paymentsError(e).message}` };
+    }
+  } catch (e) {
+    return paymentsError(e);
+  }
+}
+
+export async function syncPaymentConnectionAction(connectionId: string): Promise<ActionState> {
+  const session = await requireAppSession();
+  assertRole(session.scope, "editor");
+  try {
+    const [conn] = await db().select({ org: schema.paymentConnection.organizationId }).from(schema.paymentConnection).where(eq(schema.paymentConnection.id, connectionId));
+    if (conn?.org !== session.scope.organizationId) return { ok: false, message: "Payment connection not found." };
+    const r = await syncPaymentGateway(adsDeps(), connectionId);
+    revalidatePath("/", "layout");
+    return { ok: true, message: syncSummary(r) };
+  } catch (e) {
+    return paymentsError(e);
   }
 }

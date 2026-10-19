@@ -1,5 +1,6 @@
 import { AdsSyncService, connectGoogleAdsServiceAccount, connectMetaSystemUser, listAdAccounts, mapAdAccount } from "@profitlens/core/ads";
 import { importEcbRates } from "@profitlens/core/fx";
+import { connectPaymentGateway, listPaymentConnections, syncPaymentGateway } from "@profitlens/core/payments";
 import { ProfitService } from "@profitlens/core/profit";
 import { connectStoreWithClientCredentials, ShopifySyncService } from "@profitlens/core/shopify";
 import { resolveScope, schema, type Database } from "@profitlens/db";
@@ -20,6 +21,9 @@ import { buildDeps, log } from "./deps";
  *   pnpm --filter @profitlens/worker sync ads-sync <adAccountId> [--full]
  *   pnpm --filter @profitlens/worker sync meta-connect <user-email>      # uses META_SYSTEM_USER_TOKEN (+ META_APP_ID, META_APP_SECRET for 60-day tokens)
  *   pnpm --filter @profitlens/worker sync fx-import [--full]          # ECB reference rates (3 years on first run)
+ *   pnpm --filter @profitlens/worker sync payments-connect <user-email> <storeId> stripe|paypal  # uses STRIPE_SECRET_KEY or PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET
+ *   pnpm --filter @profitlens/worker sync payments-status <user-email>
+ *   pnpm --filter @profitlens/worker sync payments-sync <paymentConnectionId>
  */
 async function main() {
   const [command, arg, arg2] = process.argv.slice(2);
@@ -93,6 +97,25 @@ async function main() {
       break;
     case "fx-import":
       log.info(await importEcbRates(deps.db, (url) => fetch(url), { today: new Date().toISOString().slice(0, 10), full: arg === "--full" }), "fx import done");
+      break;
+    case "payments-connect": {
+      const [, , , storeId, gateway] = process.argv.slice(2);
+      if (gateway !== "stripe" && gateway !== "paypal") throw new Error("usage: payments-connect <user-email> <storeId> stripe|paypal");
+      const creds =
+        gateway === "stripe"
+          ? { secretKey: process.env.STRIPE_SECRET_KEY ?? "" }
+          : { clientId: process.env.PAYPAL_CLIENT_ID ?? "", clientSecret: process.env.PAYPAL_CLIENT_SECRET ?? "" };
+      if (Object.values(creds).some((v) => !v)) throw new Error(`${gateway === "stripe" ? "STRIPE_SECRET_KEY" : "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET"} must be set (see docs/PAYMENT_GATEWAYS_SETUP.md)`);
+      const r = await connectPaymentGateway(deps, await scopeFor(deps.db, required(arg)), { storeId: required(storeId), gateway, ...creds });
+      log.info(r, "connected");
+      log.info(await syncPaymentGateway(deps, r.connectionId), "payments sync done");
+      break;
+    }
+    case "payments-status":
+      console.table(await listPaymentConnections(deps.db, await scopeFor(deps.db, required(arg))));
+      break;
+    case "payments-sync":
+      log.info(await syncPaymentGateway(deps, required(arg)), "payments sync done");
       break;
     case "recalc":
       log.info(await new ProfitService(deps.db).recalcStore(required(arg), { force: arg2 === "--force" }), "recalc done");

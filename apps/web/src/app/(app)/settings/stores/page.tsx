@@ -4,7 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ConnectStoreForm } from "@/components/sync/connect-store-form";
 import { listAdAccounts, listAdConnections } from "@profitlens/core/ads";
 import { AdAccountRow, ConnectGoogleAdsForm, ConnectMetaForm } from "@/components/ads/google-ads";
-import { Table, TBody, TH, THead, TR } from "@/components/ui/table";
+import { listPaymentConnections, listUnmatchedGatewayPayments, GATEWAY_LABEL } from "@profitlens/core/payments";
+import { ConnectPaymentGatewayForm, SyncPaymentConnectionButton } from "@/components/payments/payment-gateways";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { formatInstant, formatMoney, formatRelative } from "@/lib/format";
 import { db } from "@/server/db";
 import { listAccessibleStores } from "@/server/reporting";
 import { requireAppSession } from "@/server/session";
@@ -14,7 +17,8 @@ export const metadata = { title: "Stores & integrations" };
 export default async function StoresPage() {
   const session = await requireAppSession();
   const stores = await listAccessibleStores(session.scope);
-  const [connections, accounts] = await Promise.all([listAdConnections(db(), session.scope), listAdAccounts(db(), session.scope)]);
+  const [connections, accounts, payments] = await Promise.all([listAdConnections(db(), session.scope), listAdAccounts(db(), session.scope), listPaymentConnections(db(), session.scope)]);
+  const unmatched = await Promise.all(payments.map((p) => listUnmatchedGatewayPayments(db(), session.scope, p.id, 20)));
   const liveStoreOptions = stores.filter((s) => !s.isDemo).map((s) => ({ id: s.id, name: s.name, timezone: s.timezone, currency: s.currency }));
   const isAdmin = session.scope.role === "owner" || session.scope.role === "admin";
   return (
@@ -105,6 +109,86 @@ export default async function StoresPage() {
             <ConnectMetaForm reconnect={connections.some((c) => c.platform === "meta")} />
           ) : (
             <p className="text-muted-foreground">Only workspace owners and admins can connect Meta.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Payment processors</CardTitle>
+            <CardDescription>
+              Shopify does not report Stripe or PayPal fees. Connect the processor account (read-only) and ProfitLens imports each payment and its
+              fee, and uses the actual fee on an order only when exactly one Shopify payment has the same amount and currency within 15 minutes.
+              Every other order keeps the estimate from your fee rules and the payment is listed here. Syncs every 6 hours. Setup guide:{" "}
+              <code className="rounded bg-muted px-1">docs/PAYMENT_GATEWAYS_SETUP.md</code>.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 text-sm">
+          {payments.map((p, i) => {
+            const tz = stores.find((s) => s.id === p.storeId)?.timezone ?? "UTC";
+            const open = unmatched[i]!;
+            return (
+              <section key={p.id} className="rounded-lg border p-3" aria-label={`${GATEWAY_LABEL[p.gateway]} for ${p.storeName}`}>
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{p.displayName}</span>
+                      <span className="text-muted-foreground">→ {p.storeName}</span>
+                      <Badge variant={p.status === "active" ? "positive" : "negative"}>{p.status === "active" ? "connected" : p.status.replace("_", " ")}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {p.matched} matched · {p.open} on the estimated fee{p.lastSyncedAt ? ` · synced ${formatRelative(p.lastSyncedAt.toISOString())}` : " · not synced yet"}
+                    </p>
+                    {p.lastError ? <p className="text-xs text-negative">{p.lastError}</p> : null}
+                  </div>
+                  {session.scope.role !== "viewer" ? (
+                    <div className="ml-auto">
+                      <SyncPaymentConnectionButton connectionId={p.id} />
+                    </div>
+                  ) : null}
+                </div>
+                {open.length ? (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Unmatched payments ({p.open > open.length ? `latest ${open.length} of ${p.open}` : p.open}) — their orders keep the estimated fee
+                    </summary>
+                    <Table className="mt-2">
+                      <THead>
+                        <TR>
+                          <TH>When</TH>
+                          <TH>Payment</TH>
+                          <TH className="text-right">Amount</TH>
+                          <TH className="text-right">Fee</TH>
+                          <TH>Why not matched</TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {open.map((u) => (
+                          <TR key={u.externalId}>
+                            <TD className="whitespace-nowrap text-xs">{formatInstant(u.occurredAt.toISOString(), tz)}</TD>
+                            <TD className="font-mono text-xs">{u.externalId}</TD>
+                            <TD className="text-right tabular-nums">{formatMoney(u.amount, u.currency)}</TD>
+                            <TD className="text-right tabular-nums">{formatMoney(u.fee, u.feeCurrency)}</TD>
+                            <TD className="text-xs text-muted-foreground">{u.status === "ambiguous" ? "Ambiguous: " : ""}{u.reason ?? "Not matched yet"}</TD>
+                          </TR>
+                        ))}
+                      </TBody>
+                    </Table>
+                  </details>
+                ) : null}
+              </section>
+            );
+          })}
+          {isAdmin ? (
+            liveStoreOptions.length ? (
+              <ConnectPaymentGatewayForm stores={liveStoreOptions} />
+            ) : (
+              <p className="text-muted-foreground">Connect a Shopify store first.</p>
+            )
+          ) : (
+            <p className="text-muted-foreground">Only workspace owners and admins can connect payment processors.</p>
           )}
         </CardContent>
       </Card>

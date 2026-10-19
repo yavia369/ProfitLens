@@ -1,6 +1,6 @@
-import { dec, localDateOf, toMoneyString, type OrderCostContext, type OrderInput, type ShippingRuleParams, type UnitCostVersion } from "@profitlens/finance";
+import { addDays, dec, FX_FALLBACK_DAYS, fxConverter, localDateOf, toMoneyString, type OrderCostContext, type OrderInput, type ShippingRuleParams, type UnitCostVersion } from "@profitlens/finance";
 import { schema, type Database } from "@profitlens/db";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 
 export interface StoreCalcContext {
   readonly storeId: string;
@@ -128,6 +128,7 @@ export async function loadOrderInputs(db: Database, store: StoreCalcContext, ord
         ? new Map<string, number | null>()
         : null;
   const txBy = group(txs, (t) => t.orderId);
+  const gatewayFees = await matchedGatewayFees(db, store, txs);
   const disputesBy = group(disputes, (d) => d.orderId);
   const fulfilledOrders = new Set(fulfillments.filter((f) => !FAILED_FULFILLMENT.has(f.status.toUpperCase())).map((f) => f.orderId));
   const overridesBy = group(overrides, (o) => o.orderId);
@@ -189,8 +190,9 @@ export async function loadOrderInputs(db: Database, store: StoreCalcContext, ord
           manual: t.manualPaymentGateway,
           amount: t.amount,
           localDate: t.processedLocalDate,
-          feeAmount: t.feeAmount,
+          feeAmount: t.feeAmount ?? gatewayFees.get(t.shopifyGid)?.fee ?? null,
           feeTaxAmount: t.feeTaxAmount,
+          ...(t.feeAmount === null && gatewayFees.has(t.shopifyGid) ? { feeSource: gatewayFees.get(t.shopifyGid)!.source } : {}),
         })),
         disputes: (disputesBy.get(o.id) ?? []).map((d) => ({ gid: d.shopifyGid, type: d.type, status: d.status, amount: d.amount, fee: d.fee, finalizedOn: d.finalizedOn })),
       };
@@ -205,4 +207,49 @@ export async function loadOrderInputs(db: Database, store: StoreCalcContext, ord
       };
       return { input, ctx };
     });
+}
+
+const GATEWAY_NAME: Record<string, string> = { stripe: "Stripe", paypal: "PayPal" };
+
+/**
+ * Processor fees for Shopify payments without a Shopify-reported fee, from gateway records matched to them (D-052),
+ * in the store currency. A fee in another currency is converted at that day's stored rate; without a rate it is not
+ * used (the payment keeps its rule estimate).
+ */
+async function matchedGatewayFees(
+  db: Database,
+  store: StoreCalcContext,
+  txs: readonly { shopifyGid: string; feeAmount: string | null; processedLocalDate: string | null }[],
+): Promise<Map<string, { fee: string; source: string }>> {
+  const need = txs.filter((t) => t.feeAmount === null);
+  if (need.length === 0) return new Map();
+  const rows = await db
+    .select({ gid: schema.gatewayTransaction.shopifyTransactionGid, fee: schema.gatewayTransaction.fee, feeCurrency: schema.gatewayTransaction.feeCurrency, externalId: schema.gatewayTransaction.externalId, gateway: schema.paymentConnection.gateway })
+    .from(schema.gatewayTransaction)
+    .innerJoin(schema.paymentConnection, eq(schema.paymentConnection.id, schema.gatewayTransaction.connectionId))
+    .where(and(eq(schema.gatewayTransaction.storeId, store.storeId), eq(schema.gatewayTransaction.matchStatus, "matched"), inArray(schema.gatewayTransaction.shopifyTransactionGid, need.map((t) => t.shopifyGid))));
+  if (rows.length === 0) return new Map();
+  const dateOf = new Map(need.map((t) => [t.shopifyGid, t.processedLocalDate]));
+  const foreign = [...new Set(rows.map((r) => r.feeCurrency).filter((c) => c !== store.currency))];
+  let fx = (_c: string, _d: string) => null as ReturnType<ReturnType<typeof fxConverter>>;
+  if (foreign.length) {
+    const dates = rows.map((r) => dateOf.get(r.gid!) ?? "").filter(Boolean).sort();
+    const rates = await db
+      .select({ date: schema.fxRate.date, base: schema.fxRate.base, quote: schema.fxRate.quote, rate: schema.fxRate.rate })
+      .from(schema.fxRate)
+      .where(and(gte(schema.fxRate.date, addDays(dates[0]!, -FX_FALLBACK_DAYS)), lte(schema.fxRate.date, dates.at(-1)!), or(inArray(schema.fxRate.base, [...foreign, store.currency]), inArray(schema.fxRate.quote, [...foreign, store.currency]))));
+    fx = fxConverter(rates, store.currency);
+  }
+  const out = new Map<string, { fee: string; source: string }>();
+  for (const r of rows) {
+    const label = `${GATEWAY_NAME[r.gateway] ?? r.gateway} fee (matched ${r.externalId})`;
+    if (r.feeCurrency === store.currency) {
+      out.set(r.gid!, { fee: r.fee, source: label });
+      continue;
+    }
+    const date = dateOf.get(r.gid!);
+    const rate = date ? fx(r.feeCurrency, date) : null;
+    if (rate) out.set(r.gid!, { fee: toMoneyString(dec(r.fee).times(rate)), source: `${label}, converted from ${r.feeCurrency}` });
+  }
+  return out;
 }

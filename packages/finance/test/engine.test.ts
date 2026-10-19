@@ -308,6 +308,15 @@ describe("transactions and fees", () => {
     expect(r.completeness.estimated).toContain("transaction_fees");
   });
 
+  it("a matched PayPal fee is actual (not estimated) and Shopify's third-party fee is still added", () => {
+    const o = order({ transactions: [tx("T4", { amount: "100.00", feeAmount: "3.79", feeSource: "PayPal fee (matched 9AB12345CD6789012)" })] });
+    const r = computeOrderProfit(o, ctx({ gatewayRules }), policy());
+    expect(m(r.totals.transactionFees)).toBe("5.79"); // 3.79 PayPal + 2 % third-party
+    expect(m(r.totals.feesEstimatedAmount)).toBe("0.00");
+    expect(r.components.fees.status).toBe("actual");
+    expect(String(r.trace.fees ? JSON.stringify(r.trace.fees) : "")).toContain("PayPal fee (matched 9AB12345CD6789012) + Shopify third-party fee");
+  });
+
   it("authorization + capture: only the capture carries a fee; failed and voided transactions are ignored", () => {
     const o = order({ transactions: [tx("A", { kind: "AUTHORIZATION" }), tx("C", { kind: "CAPTURE", parentGid: "A" }), tx("F", { status: "FAILURE" }), tx("V", { kind: "VOID" })] });
     expect(m(computeOrderProfit(o, ctx({ gatewayRules }), policy()).totals.transactionFees)).toBe("4.90");

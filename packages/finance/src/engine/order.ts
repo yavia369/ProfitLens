@@ -271,7 +271,13 @@ export function computeOrderProfit(order: OrderInput, ctx: OrderCostContext, pol
     let fee: Decimal;
     let status: CostStatus;
     let source: string;
-    if (tx.feeAmount !== null) {
+    if (tx.feeAmount !== null && tx.feeSource) {
+      // The processor's own fee; Shopify's third-party fee for non-Shopify-Payments gateways is billed on top.
+      const thirdParty = gateway !== "shopify_payments" && ctx.thirdPartyFeeRate !== null ? percentCharge(amount, dec(ctx.thirdPartyFeeRate), ctx.storeCurrency) : ZERO;
+      fee = dec(tx.feeAmount).plus(thirdParty);
+      status = "actual";
+      source = `${tx.feeSource}${thirdParty.isZero() ? "" : " + Shopify third-party fee"}`;
+    } else if (tx.feeAmount !== null) {
       fee = dec(tx.feeAmount).plus(policy.feeTaxRecoverable || tx.feeTaxAmount === null ? ZERO : dec(tx.feeTaxAmount));
       status = "actual";
       source = "Shopify-reported fee";

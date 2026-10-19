@@ -1,6 +1,7 @@
 import { AdsSyncService } from "@profitlens/core/ads";
 import { importEcbRates } from "@profitlens/core/fx";
-import { QUEUES, type AdsJob, type OrderJob, type StoreJob } from "@profitlens/core/jobs";
+import { QUEUES, type AdsJob, type OrderJob, type PaymentsJob, type StoreJob } from "@profitlens/core/jobs";
+import { GatewayApiError, syncablePaymentConnections, syncPaymentGateway } from "@profitlens/core/payments";
 import { ProfitService } from "@profitlens/core/profit";
 import { ShopifySyncService } from "@profitlens/core/shopify";
 import { schema } from "@profitlens/db";
@@ -10,7 +11,7 @@ import { buildDeps, log } from "./deps";
 
 /**
  * Background worker: Shopify backfill, incremental sync (every 15 min), webhook-triggered order refresh,
- * profit recalculation, Google Ads spend (every 6 hours), ECB exchange rates (daily) and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
+ * profit recalculation, ad spend (every 6 hours), Stripe/PayPal fee matching (every 6 hours), ECB exchange rates (daily) and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
  */
 async function main() {
   const deps = buildDeps();
@@ -56,6 +57,23 @@ async function main() {
   await boss.work(QUEUES.adsSyncAll, async () => {
     for (const accountId of await ads.syncableAccounts()) await boss.send(QUEUES.adsSync, { accountId } satisfies AdsJob, { singletonKey: accountId, retryLimit: 5, retryBackoff: true });
   });
+  await boss.work<PaymentsJob>(QUEUES.paymentsSync, { batchSize: 1 }, async (jobs) => {
+    for (const job of jobs) {
+      log.info({ queue: QUEUES.paymentsSync, jobId: job.id, connectionId: job.data.connectionId }, "job started");
+      try {
+        const result = await syncPaymentGateway(deps, job.data.connectionId);
+        log.info({ queue: QUEUES.paymentsSync, jobId: job.id, result }, "job finished");
+      } catch (error) {
+        // Rejected credentials are recorded on the connection (needs_reauth); retrying cannot fix them.
+        if (error instanceof GatewayApiError && error.kind === "auth") log.warn({ queue: QUEUES.paymentsSync, jobId: job.id, err: error }, "credentials rejected");
+        else throw error;
+      }
+    }
+  });
+  await boss.work(QUEUES.paymentsSyncAll, async () => {
+    for (const connectionId of await syncablePaymentConnections(deps.db))
+      await boss.send(QUEUES.paymentsSync, { connectionId } satisfies PaymentsJob, { singletonKey: connectionId, retryLimit: 5, retryBackoff: true });
+  });
   await boss.work(QUEUES.incrementalAll, async () => {
     for (const storeId of await activeStores()) await boss.send(QUEUES.incremental, { storeId }, { singletonKey: storeId, retryLimit: 5, retryBackoff: true });
   });
@@ -72,6 +90,8 @@ async function main() {
   await boss.schedule(QUEUES.reconcileAll, "15 2 * * *", null, { tz: "UTC" });
   // Ad spend: every 6 hours (each run re-reads the last 3 days to pick up restatements).
   await boss.schedule(QUEUES.adsSyncAll, "40 */6 * * *", null, { tz: "UTC" });
+  // Processor fees: every 6 hours, offset from ad spend (each run re-reads 72 hours; PayPal lists payments up to 3 hours late).
+  await boss.schedule(QUEUES.paymentsSyncAll, "10 1-23/6 * * *", null, { tz: "UTC" });
 
   log.info("worker started");
   const shutdown = async (signal: string) => {

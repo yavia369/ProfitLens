@@ -12,7 +12,8 @@
     "./profit": "./src/profit/index.ts",
     "./ads": "./src/ads/index.ts",
     "./team": "./src/team/index.ts",
-    "./fx": "./src/fx/index.ts"
+    "./fx": "./src/fx/index.ts",
+    "./payments": "./src/payments/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -26,7 +27,8 @@
     "drizzle-orm": "0.45.4",
     "zod": "4.6.5",
     "@profitlens/google-ads": "workspace:*",
-    "@profitlens/meta-ads": "workspace:*"
+    "@profitlens/meta-ads": "workspace:*",
+    "@profitlens/payments": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
