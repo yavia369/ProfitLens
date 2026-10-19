@@ -139,6 +139,8 @@ Each order result stores an `inputs_hash`, so recompute is skipped when nothing 
 - Migrations run as a release step (`pnpm db:migrate`) before the new version takes traffic.
 - Observability: JSON logs to the platform's log drain; error monitoring via an optional Sentry DSN; `/api/health` (DB + queue lag).
 - Environments: `development` (local Postgres), `test` (ephemeral DB per test run), `production`.
+- Implemented in Phase 9 (D-053): `Dockerfile` (roles `web`, `worker`, `migrate`, `cli`), `docker-compose.yml`,
+  `/api/health`, worker heartbeat; operations guide in `docs/DEPLOYMENT.md`.
 
 ## 8. Roadmap (phases)
 | Phase | Deliverables | External needs |

@@ -82,3 +82,14 @@ Implemented on the **demo data source only** (live data arrives with Phases 4–
 | Meta Ads: system-user token (60-day refresh with app ID/secret), account discovery, store mapping, daily campaign spend + Meta-reported purchase value, 6-hourly sync with 3-day restatement window | Done, tested against recorded-shape fakes; **no live run** (owner has no Meta ad account) |
 | TikTok Ads API | **Blocked**: docs portal CDN host refused by the network policy; needs app review and an advertiser account. Manual TikTok spend remains available |
 | Stripe / PayPal fees: read-only import, match to Shopify payments by amount + currency ± 15 min (exactly one candidate), actual fee on matched orders, reconciliation list of unmatched/ambiguous payments | Done, unit + integration + e2e tested; **not applicable to Luraflo** (Shopify Payments only, fees already actual) |
+
+## Phase 9 status (2026-10-19)
+| Item | Status |
+|---|---|
+| Production packaging: one Docker image (web, worker, migrate, cli), compose stack, CI image smoke test | Done, verified locally (D-053) |
+| Health checks (`/api/health`, strict mode, worker heartbeat, queue lag), failed-job list in the Sync Center, request ids, server error hook | Done, tested |
+| Shopify webhook registration for the deployed URL (`webhooks-register`) | Done, tested against a fake; live run needs the public URL and owner approval |
+| Performance: all reports p95 < 1 s on 100k orders | Done (`docs/TESTING.md`) |
+| Accessibility: axe WCAG 2.2 AA clean on every page, light and dark; skip link; keyboard focus | Done, in e2e |
+| Security review, CSP + HSTS, dependency audit | Done (`docs/SECURITY_REVIEW.md`, D-054); RLS before multi-merchant use |
+| Actual deployment | Waiting for hosting accounts (B5) |

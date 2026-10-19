@@ -3,8 +3,9 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 9 — Hardening: IN PROGRESS** (2026-10-19). Phase 8 approved by the owner on 2026-10-19 ("CONFIRM PHASE 8").
-TikTok stays blocked (B10). Phase 6 live Google Ads check still waits for B4.
+**Phase 9 — Hardening: COMPLETE, awaiting owner approval** ("CONFIRM PHASE 9") (2026-10-19). Phase 8 approved on
+2026-10-19 ("CONFIRM PHASE 8"). The actual deployment waits for hosting accounts (B5); TikTok stays blocked (B10);
+the live Google Ads check waits for B4.
 
 Phase 9 plan (ARCHITECTURE §8, PRODUCT_REQUIREMENTS §5/§7):
 1. Deploy config: one Docker image with `web` (Next.js standalone) and `worker` processes, `/api/health`
@@ -62,7 +63,7 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 3. `DATABASE_URL=postgres://profitlens:profitlens@localhost:5432/profitlens pnpm db:migrate`.
 4. To reload Luraflo: sign up a local user in the web app, then `pnpm --filter @profitlens/worker sync connect <email>`,
    `… sync backfill <storeId>` (also computes profit), `… sync status`. `… sync recalc <storeId> [--force]` recomputes results.
-5. Migrations now go up to `0006_payment_gateways` (Stripe/PayPal connections and imported payments).
+5. Migrations now go up to `0008_search_trigram_indexes` (needs the `pg_trgm` extension; the migration creates it).
 6. In this container Node's `fetch` only uses the egress proxy with `NODE_USE_ENV_PROXY=1` (e.g.
    `NODE_USE_ENV_PROXY=1 pnpm --filter @profitlens/worker sync fx-import`). Production has direct egress.
 7. Exchange rates: `… sync fx-import` (first run: 3 years of ECB history; later: the 90-day file). The worker
@@ -148,8 +149,18 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
     `docs/PAYMENT_GATEWAYS_SETUP.md`; migration `0006_payment_gateways`;
   - TikTok: not built (blocked, see B10).
 
+- Phase 9 (2026-10-19; `docs/FEATURE_PARITY.md` "Phase 9 status", D-053, D-054):
+  - production Docker image (web / worker / migrate / cli roles, non-root), `docker-compose.yml`, CI image smoke test,
+    `/api/health` + worker heartbeat (migration `0007`), deployment guide `docs/DEPLOYMENT.md`;
+  - Shopify webhook registration for the deployed URL (`cli webhooks-register`);
+  - 100k-order synthetic benchmark: every report p95 < 1 s (customer analytics with exact BigInt sums, order search
+    with trigram indexes, migration `0008`);
+  - accessibility: axe WCAG 2.2 AA clean on every page in light and dark mode, skip link, keyboard checks (e2e);
+  - security review `docs/SECURITY_REVIEW.md`: nonce CSP + HSTS, dependency fix, bundle and entry-point sweep;
+  - failed-job list in the Sync Center, request ids, server error hook (`ERROR_REPORT_URL`); README owner guide.
+
 ## In progress
-- Phase 9 (plan above). Phase 6 live verification still pending B4.
+- Waiting for "CONFIRM PHASE 9". Phase 6 live verification still pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -171,7 +182,9 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 - UTM-modeled attribution needs orders tagged with `utm_campaign`; Google auto-tagging alone (gclid) is not matched.
 - No email delivery yet: invitation links are shared by the inviter; the workspace switcher lives on the Team page.
 - Weight-tiered shipping uses the variant's current weight (Shopify keeps no history).
-- `next start` warns because `output: "standalone"` is set; production will run `node .next/standalone/server.js` (Phase 9 Docker).
+- `next start` warns because `output: "standalone"` is set; the production image runs the standalone server (D-053).
+- Full recalculation runs at ≈ 200 orders/s (100k orders ≈ 8 min, background job); reports stay fast meanwhile.
+- Postgres RLS is not enabled (D-054): required before serving merchants other than the owner.
 
 ## External blockers / owner actions
 | # | Item | Needed by |
@@ -181,18 +194,19 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | B3 | ~~Shopify app + env vars~~ RESOLVED 2026-10-19 (connected, verified). | — |
 | B7 | Optional: `read_all_orders` for full history (today 1 order, #1001 from 2026-07-27, is outside the 60-day window). Unknown whether a Dev Dashboard app can be granted it | Before relying on history older than 60 days |
 | B8 | **Owner action:** Luraflo has no product costs (41 sold variants, 7,817 total) and no shipping rule, so every order is flagged incomplete and profit is overstated. Enter costs on Product costs (export CSV → fill → import), add a shipping rule and the running expenses (Shopify plan, apps) | Accurate profit figures |
-| B6 | Webhook delivery needs a public URL; until Phase 9 the 15-min poll covers it (D-029) | Phase 9 |
+| B6 | Webhook delivery needs the public URL (B5); then `cli webhooks-register <storeId>` (owner approval: creates subscriptions on Luraflo) and the compliance webhook URL in the Dev Dashboard. Until then the 15-min poll covers it (D-029) | After deployment |
 | B4 | **Owner action:** Google Cloud project with Google Ads API Explorer access + service account key, added as a read-only user in Google Ads — steps in `docs/GOOGLE_ADS_SETUP.md` (sent 2026-10-19) | Phase 6 live verification |
 | B9 | ~~Network allow-list for Phase 8~~ RESOLVED 2026-10-19 (Meta, Stripe, PayPal, ECB, TikTok portal reachable). B2's FX part is resolved by the ECB host | — |
 | B10 | **Owner action (optional, TikTok):** allow `sf16-website-login.neutral.ttwstatic.com` (the TikTok API portal loads its docs from it), and for live use: a TikTok developer app with app review plus a TikTok ad account | TikTok Ads integration |
-| B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
+| B5 | **Owner action:** hosting for the Docker image (any Docker host, or Railway/Fly/Render) + managed Postgres 16, and a domain with HTTPS. Redis is not needed. Steps: `docs/DEPLOYMENT.md` | Going live |
 
 ## Next tasks
-1. Owner: review the Phase 8 report and reply "CONFIRM PHASE 8"; optionally B10 (TikTok); B4 (Google Ads access,
-   then "Continue Phase 6" for the live check); B8 (Luraflo costs, shipping rule, expenses).
-2. Phase 9 (after approval), per the master brief.
+1. Owner: review the Phase 9 report and reply "CONFIRM PHASE 9"; choose hosting (B5) to go live; B4 (Google Ads
+   access, then "Continue Phase 6"); B8 (Luraflo costs, shipping rule, expenses); optionally B10 (TikTok).
+2. After deployment: register webhooks (B6, with approval), verify on the live URL.
 
 ## Test results
+- 2026-10-19 (Phase 9): `pnpm test` 215/215, `pnpm typecheck`, `next build`, Playwright 14/14 (incl. axe scan, CSP), Docker image + compose verified, 100k-order benchmark all p95 < 1 s.
 - 2026-10-19 (Phase 8): `pnpm test` 209/209, `pnpm typecheck`, `next build`, Playwright 12/12; live ECB import; Luraflo recalculated on engine 1.1.0.
 - 2026-10-19 (Phase 7): `pnpm test` 177/177, `pnpm typecheck`, `next build`, Playwright 12/12; Luraflo customers = ShopifyQL.
 - 2026-10-19 (Phase 6): `pnpm test` 148/148, `pnpm typecheck`, `next build`, Playwright 12/12; live Google Ads run pending B4.
