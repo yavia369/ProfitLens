@@ -26,6 +26,7 @@ Set these in the hosting platform's secret/env settings. Never commit them, neve
 | `ENCRYPTION_ACTIVE_KID` | yes | The key id used for new encryptions. |
 | `SHOPIFY_API_VERSION` | no | Default `2026-10`. |
 | `LOG_LEVEL` | no | Default `info`. Logs are JSON on stdout (secrets redacted). |
+| `ERROR_REPORT_URL` | no | Server errors are always logged as JSON with the request id; when set, a short report (message, path, route, request id, no headers or bodies) is also POSTed here (e.g. an incident or chat webhook). |
 | `APP_VERSION` | build arg | Set automatically from the build (`--build-arg APP_VERSION=$(git rev-parse --short HEAD)`); shown in logs and the worker heartbeat. |
 
 Integration credentials (Shopify client secret, Google key, Meta token, Stripe/PayPal keys) are entered in

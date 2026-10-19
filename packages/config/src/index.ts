@@ -29,6 +29,8 @@ export const serverEnvSchema = z
     GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
     GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+    /** Optional: server errors are also POSTed here as a short JSON report (apps/web/src/instrumentation.ts). */
+    ERROR_REPORT_URL: z.url().optional(),
   })
   .refine((env) => env.ENCRYPTION_ACTIVE_KID in env.ENCRYPTION_KEYS, {
     message: "ENCRYPTION_ACTIVE_KID must be a key of ENCRYPTION_KEYS",

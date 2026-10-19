@@ -1,4 +1,5 @@
 import "server-only";
+import { failedJobsFor, type FailedJob } from "@profitlens/core/ops";
 import { REQUIRED_SCOPES } from "@profitlens/core/shopify";
 import { schema, type OrgScope } from "@profitlens/db";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -27,6 +28,8 @@ export interface SyncCenterStore {
   issues: { localDate: string; metric: string; expected: string; actual: string }[];
   latestOrders: { name: string; localDate: string; financialStatus: string | null; totalPrice: string | null; currency: string; ledgerEntries: number }[];
   webhooks24h: number;
+  /** Background jobs for this store (or its ad accounts / payment connections) that failed after every retry, last 7 days. */
+  failedJobs: FailedJob[];
 }
 
 const n = (rows: unknown) => Number((rows as { rows: { n: number }[] }).rows[0]?.n ?? 0);
@@ -69,6 +72,13 @@ export async function loadSyncCenter(scope: OrgScope): Promise<SyncCenterStore[]
         select o.name, o.processed_local_date as "localDate", o.financial_status as "financialStatus", o.total_price as "totalPrice", o.currency,
                (select count(*)::int from sale_ledger_entry s where s.order_id = o.id) as "ledgerEntries"
         from "order" o where o.store_id = ${id} order by o.processed_at desc limit 10`)).rows as SyncCenterStore["latestOrders"];
+      // Ids the store's jobs carry: the store itself, its ad accounts and its payment connections (all in this org).
+      const relatedIds = [
+        id,
+        ...(await d.select({ id: schema.adAccount.id }).from(schema.adAccount).where(and(eq(schema.adAccount.storeId, id), eq(schema.adAccount.organizationId, scope.organizationId)))).map((r) => r.id),
+        ...(await d.select({ id: schema.paymentConnection.id }).from(schema.paymentConnection).where(and(eq(schema.paymentConnection.storeId, id), eq(schema.paymentConnection.organizationId, scope.organizationId)))).map((r) => r.id),
+      ];
+      const failedJobs = await failedJobsFor(d, relatedIds, 10);
       const webhooks24h = n(await d.execute(sql`select count(*)::int as n from webhook_event where store_id = ${id} and received_at > now() - interval '24 hours'`));
       const scopes = connection?.grantedScopes.split(",").filter(Boolean) ?? [];
       return {
@@ -105,6 +115,7 @@ export async function loadSyncCenter(scope: OrgScope): Promise<SyncCenterStore[]
         issues: issues.map((i) => ({ localDate: i.localDate, metric: i.metric, expected: i.expected, actual: i.actual })),
         latestOrders: latest,
         webhooks24h,
+        failedJobs,
       };
     }),
   );

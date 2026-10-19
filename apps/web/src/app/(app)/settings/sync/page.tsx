@@ -18,6 +18,9 @@ const JOB_LABEL: Record<string, string> = {
   "shopify.incremental": "Incremental sync",
   "shopify.order": "Order refresh (webhook)",
   "shopify.reconcile": "Reconciliation",
+  "profit.recalc-store": "Profit recalculation",
+  "ads.google.sync": "Ad spend sync",
+  "payments.sync": "Payment processor sync",
 };
 
 function JobStatus({ status }: { status: string }) {
@@ -131,6 +134,28 @@ export default async function SyncCenterPage() {
                 </Table>
               )}
             </section>
+
+            {s.failedJobs.length ? (
+              <section>
+                <h3 className="mb-1 text-sm font-semibold">Failed after all retries</h3>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  These background jobs gave up (last 7 days). The next scheduled run tries again; use the buttons above to retry now once the cause is fixed.
+                </p>
+                <Table>
+                  <THead><TR><TH>Job</TH><TH>Failed</TH><TH className="text-right">Attempts</TH><TH>Error</TH></TR></THead>
+                  <TBody>
+                    {s.failedJobs.map((j) => (
+                      <TR key={j.id}>
+                        <TD>{JOB_LABEL[j.queue] ?? j.queue}</TD>
+                        <TD className="text-muted-foreground">{j.failedAt ? formatInstant(j.failedAt, s.timezone) : "—"}</TD>
+                        <TD className="text-right tabular">{j.attempts}</TD>
+                        <TD className="whitespace-normal text-xs text-negative">{j.error ?? "No error message recorded"}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              </section>
+            ) : null}
 
             {s.issues.length ? (
               <section>
