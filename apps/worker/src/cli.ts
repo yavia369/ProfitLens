@@ -2,7 +2,7 @@ import { AdsSyncService, connectGoogleAdsServiceAccount, connectMetaSystemUser, 
 import { importEcbRates } from "@profitlens/core/fx";
 import { connectPaymentGateway, listPaymentConnections, syncPaymentGateway } from "@profitlens/core/payments";
 import { ProfitService } from "@profitlens/core/profit";
-import { connectStoreWithClientCredentials, ShopifySyncService } from "@profitlens/core/shopify";
+import { connectStoreWithClientCredentials, registerShopifyWebhooks, ShopifySyncService } from "@profitlens/core/shopify";
 import { resolveScope, schema, type Database } from "@profitlens/db";
 import { eq } from "drizzle-orm";
 import { buildDeps, log } from "./deps";
@@ -24,6 +24,7 @@ import { buildDeps, log } from "./deps";
  *   pnpm --filter @profitlens/worker sync payments-connect <user-email> <storeId> stripe|paypal  # uses STRIPE_SECRET_KEY or PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET
  *   pnpm --filter @profitlens/worker sync payments-status <user-email>
  *   pnpm --filter @profitlens/worker sync payments-sync <paymentConnectionId>
+ *   pnpm --filter @profitlens/worker sync webhooks-register <storeId>  # after deployment: subscribes Shopify webhooks at APP_URL
  */
 async function main() {
   const [command, arg, arg2] = process.argv.slice(2);
@@ -117,6 +118,12 @@ async function main() {
     case "payments-sync":
       log.info(await syncPaymentGateway(deps, required(arg)), "payments sync done");
       break;
+    case "webhooks-register": {
+      const appUrl = process.env.APP_URL;
+      if (!appUrl) throw new Error("APP_URL must be set to the public HTTPS address");
+      log.info(await registerShopifyWebhooks(deps, required(arg), appUrl), "webhooks registered");
+      break;
+    }
     case "recalc":
       log.info(await new ProfitService(deps.db).recalcStore(required(arg), { force: arg2 === "--force" }), "recalc done");
       break;

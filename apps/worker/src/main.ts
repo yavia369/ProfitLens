@@ -1,11 +1,14 @@
 import { AdsSyncService } from "@profitlens/core/ads";
 import { importEcbRates } from "@profitlens/core/fx";
 import { QUEUES, type AdsJob, type OrderJob, type PaymentsJob, type StoreJob } from "@profitlens/core/jobs";
+import { pruneWorkerHeartbeats, recordWorkerHeartbeat } from "@profitlens/core/ops";
 import { GatewayApiError, syncablePaymentConnections, syncPaymentGateway } from "@profitlens/core/payments";
 import { ProfitService } from "@profitlens/core/profit";
 import { ShopifySyncService } from "@profitlens/core/shopify";
 import { schema } from "@profitlens/db";
 import { eq } from "drizzle-orm";
+import { writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { PgBoss } from "pg-boss";
 import { buildDeps, log } from "./deps";
 
@@ -93,9 +96,23 @@ async function main() {
   // Processor fees: every 6 hours, offset from ad spend (each run re-reads 72 hours; PayPal lists payments up to 3 hours late).
   await boss.schedule(QUEUES.paymentsSyncAll, "10 1-23/6 * * *", null, { tz: "UTC" });
 
-  log.info("worker started");
+  // Liveness for /api/health: one row per worker process, refreshed every minute.
+  const worker = { id: `${hostname()}:${process.pid}`, startedAt: new Date(), version: process.env.APP_VERSION ?? null };
+  // WORKER_BEAT_FILE (set in the Docker image) lets the container health check see the same liveness.
+  const beat = () =>
+    recordWorkerHeartbeat(deps.db, worker)
+      .then(async () => {
+        if (process.env.WORKER_BEAT_FILE) await writeFile(process.env.WORKER_BEAT_FILE, new Date().toISOString());
+      })
+      .catch((error) => log.warn({ err: error }, "heartbeat failed"));
+  await pruneWorkerHeartbeats(deps.db);
+  await beat();
+  const heartbeat = setInterval(beat, 60_000);
+
+  log.info({ workerId: worker.id, version: worker.version }, "worker started");
   const shutdown = async (signal: string) => {
     log.info({ signal }, "worker stopping");
+    clearInterval(heartbeat);
     await boss.stop({ graceful: true, timeout: 30_000 });
     process.exit(0);
   };

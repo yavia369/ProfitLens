@@ -85,3 +85,11 @@ export const reconciliationIssue = pgTable(
   },
   (t) => [index("reconciliation_issue_store_date_idx").on(t.storeId, t.localDate)],
 );
+
+/** Liveness of background workers: each worker process upserts its row every minute (health checks read it). */
+export const workerHeartbeat = pgTable("worker_heartbeat", {
+  workerId: text("worker_id").primaryKey(),
+  startedAt: tsz("started_at").notNull(),
+  beatAt: tsz("beat_at").notNull(),
+  version: text("version"),
+});

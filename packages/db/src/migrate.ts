@@ -4,18 +4,12 @@ import { createDb, createPool } from "./client";
 
 export const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
 
-export async function runMigrations(connectionString: string): Promise<void> {
+/** Applies pending migrations (idempotent). `folder` is given by bundled callers (the production image). */
+export async function runMigrations(connectionString: string, folder: string = migrationsFolder): Promise<void> {
   const pool = createPool(connectionString, 1);
   try {
-    await migrate(createDb(pool), { migrationsFolder });
+    await migrate(createDb(pool), { migrationsFolder: folder });
   } finally {
     await pool.end();
   }
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required");
-  await runMigrations(url);
-  console.log("migrations applied");
 }

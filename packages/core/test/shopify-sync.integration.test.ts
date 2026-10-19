@@ -7,7 +7,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import { createHmac } from "node:crypto";
-import { connectStoreWithClientCredentials, ConnectionError, dayBoundsUtc, handleShopifyWebhook, ShopifySyncService } from "../src/shopify";
+import { connectStoreWithClientCredentials, ConnectionError, dayBoundsUtc, handleShopifyWebhook, registerShopifyWebhooks, ShopifySyncService, WEBHOOK_TOPICS } from "../src/shopify";
 import {
   applyCostImport,
   applyRecalc,
@@ -43,7 +43,7 @@ let pool: pg.Pool;
 let db: Database;
 
 /** In-memory fake of the Shopify endpoints used by the sync (driven by mutable state per test). */
-function fakeShopify(state: { orders: RawOrder[]; products: RawProduct[]; scopes: string; ordersCount: number; tokenRequests: number }) {
+function fakeShopify(state: { orders: RawOrder[]; products: RawProduct[]; scopes: string; ordersCount: number; tokenRequests: number; subs?: { id: string; topic: string; uri: string }[] }) {
   const respond = (status: number, body: unknown) => ({
     ok: status < 300,
     status,
@@ -100,6 +100,18 @@ function fakeShopify(state: { orders: RawOrder[]; products: RawProduct[]; scopes
     if (query.includes("OrderById")) return respond(200, { data: { order: state.orders.find((o) => o.id === variables.id) ?? null }, extensions: { cost } });
     if (query.includes("Disputes"))
       return respond(200, { data: { disputes: { edges: [{ node: { id: "gid://shopify/ShopifyPaymentsDispute/1", type: "CHARGEBACK", status: "LOST", initiatedAt: "2026-10-09T00:00:00Z", finalizedOn: "2026-10-12", amount: { amount: "159.88", currencyCode: "AUD" }, reasonDetails: { reason: "FRAUDULENT" }, order: { id: "gid://shopify/Order/5001" } } }], pageInfo: { hasNextPage: false, endCursor: null } } }, extensions: { cost } });
+    if (query.includes("mutation WebhookSubscriptionCreate")) {
+      const uri = (variables.sub as { uri: string }).uri;
+      if (!uri.startsWith("https://")) return respond(200, { data: { webhookSubscriptionCreate: { webhookSubscription: null, userErrors: [{ field: ["uri"], message: "Address protocol http:// is not supported" }] } }, extensions: { cost } });
+      const sub = { id: `gid://shopify/WebhookSubscription/${(state.subs ??= []).length + 100}`, topic: String(variables.topic), uri };
+      state.subs.push(sub);
+      return respond(200, { data: { webhookSubscriptionCreate: { webhookSubscription: { id: sub.id }, userErrors: [] } }, extensions: { cost } });
+    }
+    if (query.includes("mutation WebhookSubscriptionDelete")) {
+      state.subs = (state.subs ?? []).filter((x) => x.id !== variables.id);
+      return respond(200, { data: { webhookSubscriptionDelete: { deletedWebhookSubscriptionId: variables.id, userErrors: [] } }, extensions: { cost } });
+    }
+    if (query.includes("query WebhookSubscriptions")) return respond(200, { data: { webhookSubscriptions: { nodes: state.subs ?? [], pageInfo: { hasNextPage: false, endCursor: null } } }, extensions: { cost } });
     if (query.includes("OrdersCount")) return respond(200, { data: { ordersCount: { count: state.ordersCount, precision: "EXACT" } }, extensions: { cost } });
     throw new Error(`unexpected request ${u} ${query.slice(0, 60)}`);
   }) as unknown as FetchLike;
@@ -627,6 +639,29 @@ describe("Shopify webhooks", () => {
     expect(await deliver(wh, "shop/redact", { shop_id: 1, shop_domain: SHOP })).toMatchObject({ outcome: "redacted_shop" });
     expect(await db.select().from(schema.store).where(eq(schema.store.id, conn.storeId))).toHaveLength(0);
     expect((await db.select().from(schema.auditLog)).map((a) => a.action)).toEqual(expect.arrayContaining(["store.uninstalled", "store.redacted"]));
+  });
+});
+
+describe("Shopify webhook subscriptions", () => {
+  it("subscribes every handled topic at the public endpoint, idempotently, and moves subscriptions to a new domain", async () => {
+    const other = { id: "gid://shopify/WebhookSubscription/1", topic: "ORDERS_CREATE", uri: "https://other-app.example/hooks" };
+    const state = { orders: [], products: [], scopes: ALL_SCOPES, ordersCount: 0, tokenRequests: 0, subs: [other] };
+    const deps = { db, keyring, apiVersion: "2026-10", fetch: fakeShopify(state) };
+    const scope = await seedOrg("whsub");
+    const { storeId } = await connectStoreWithClientCredentials(deps, scope, { shopDomain: SHOP, clientId: "client-id-123", clientSecret: "shpss_webhook_secret" });
+
+    await expect(registerShopifyWebhooks(deps, storeId, "http://localhost:3000")).rejects.toThrow("public HTTPS address");
+    const first = await registerShopifyWebhooks(deps, storeId, "https://app.profitlens.example");
+    expect(first.endpoint).toBe("https://app.profitlens.example/api/webhooks/shopify");
+    expect(first.created).toEqual([...WEBHOOK_TOPICS]);
+    expect(state.subs).toHaveLength(WEBHOOK_TOPICS.length + 1); // another app's subscription is left alone
+    const again = await registerShopifyWebhooks(deps, storeId, "https://app.profitlens.example/");
+    expect(again).toMatchObject({ created: [], replaced: [], kept: [...WEBHOOK_TOPICS] });
+    const moved = await registerShopifyWebhooks(deps, storeId, "https://profit.luraflo.example");
+    expect(moved.replaced).toEqual([...WEBHOOK_TOPICS]);
+    expect(state.subs.filter((x) => x.uri.startsWith("https://app.profitlens.example"))).toHaveLength(0);
+    expect(state.subs).toContainEqual(other);
+    expect((await db.select().from(schema.auditLog)).filter((a) => a.action === "webhooks.register")).toHaveLength(2);
   });
 });
 

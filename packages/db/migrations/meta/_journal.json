@@ -50,6 +50,13 @@
       "when": 1792406881107,
       "tag": "0006_payment_gateways",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792407900459,
+      "tag": "0007_worker_heartbeat",
+      "breakpoints": true
     }
   ]
 }
