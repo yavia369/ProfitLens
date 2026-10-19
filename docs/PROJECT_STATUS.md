@@ -122,7 +122,8 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
   - weight-tiered shipping rules; migration `0005_team_weight_shipping`.
 
 ## In progress
-- Phase 8: FX-converted consolidation (network-independent part) while B9 is pending. Phase 6 live verification pending B4.
+- Phase 8: item 1 consolidation done (D-050, commit 45c6466: day-by-day FX conversion from stored rates; tests
+  177 → 182). Rate import (item 1 provider) and items 2–5 wait for B9. Phase 6 live verification pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
