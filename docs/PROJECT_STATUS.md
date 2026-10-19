@@ -3,9 +3,9 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 9 — Hardening: COMPLETE, awaiting owner approval** ("CONFIRM PHASE 9") (2026-10-19). Phase 8 approved on
-2026-10-19 ("CONFIRM PHASE 8"). The actual deployment waits for hosting accounts (B5); TikTok stays blocked (B10);
-the live Google Ads check waits for B4.
+**All planned phases (1–9) complete.** Phase 9 approved by the owner on 2026-10-19 ("CONFIRM PHASE 9").
+Next: deployment on Railway (owner's choice; steps in `docs/DEPLOYMENT.md` → "Railway"), then live verification.
+Open owner items: B4 (Google Ads key → live Phase 6 check), B8 (Luraflo costs), B10 (TikTok, optional).
 
 Phase 9 plan (ARCHITECTURE §8, PRODUCT_REQUIREMENTS §5/§7):
 1. Deploy config: one Docker image with `web` (Next.js standalone) and `worker` processes, `/api/health`
@@ -160,7 +160,8 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
   - failed-job list in the Sync Center, request ids, server error hook (`ERROR_REPORT_URL`); README owner guide.
 
 ## In progress
-- Waiting for "CONFIRM PHASE 9". Phase 6 live verification still pending B4.
+- Nothing in progress. Waiting for the Railway deployment (B5), then: live health/header check, webhook
+  registration with owner approval (B6), Luraflo re-connect on production. Phase 6 live verification pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -198,11 +199,11 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | B4 | **Owner action:** Google Cloud project with Google Ads API Explorer access + service account key, added as a read-only user in Google Ads — steps in `docs/GOOGLE_ADS_SETUP.md` (sent 2026-10-19) | Phase 6 live verification |
 | B9 | ~~Network allow-list for Phase 8~~ RESOLVED 2026-10-19 (Meta, Stripe, PayPal, ECB, TikTok portal reachable). B2's FX part is resolved by the ECB host | — |
 | B10 | **Owner action (optional, TikTok):** allow `sf16-website-login.neutral.ttwstatic.com` (the TikTok API portal loads its docs from it), and for live use: a TikTok developer app with app review plus a TikTok ad account | TikTok Ads integration |
-| B5 | **Owner action:** hosting for the Docker image (any Docker host, or Railway/Fly/Render) + managed Postgres 16, and a domain with HTTPS. Redis is not needed. Steps: `docs/DEPLOYMENT.md` | Going live |
+| B5 | **Owner action (Railway chosen 2026-10-19):** hosting for the Docker image (any Docker host, or Railway/Fly/Render) + managed Postgres 16, and a domain with HTTPS. Redis is not needed. Steps: `docs/DEPLOYMENT.md` | Going live |
 
 ## Next tasks
-1. Owner: review the Phase 9 report and reply "CONFIRM PHASE 9"; choose hosting (B5) to go live; B4 (Google Ads
-   access, then "Continue Phase 6"); B8 (Luraflo costs, shipping rule, expenses); optionally B10 (TikTok).
+1. Owner: deploy on Railway (B5, `docs/DEPLOYMENT.md`) and share the domain; B4 (Google Ads access, then
+   "Continue Phase 6"); B8 (Luraflo costs, shipping rule, expenses); optionally B10 (TikTok).
 2. After deployment: register webhooks (B6, with approval), verify on the live URL.
 
 ## Test results
