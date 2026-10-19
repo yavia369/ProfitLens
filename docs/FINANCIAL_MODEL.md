@@ -131,6 +131,8 @@ M1 rule types:
 - `per_item` amount × shippable units
 - `first_plus_additional` (first unit A, each extra B)
 - `tiered_quantity` (total cost per quantity tier)
+- `tiered_weight` (total cost per shipment-weight tier; Σ quantity × the variant's current weight; any shippable
+  item with no weight or 0 g makes shipping `missing`, D-048)
 
 Rules can be scoped by destination country set (default: all). Orders with no shippable items
 cost 0. Orders **cancelled before fulfilment** get 0 shipping cost when `policy.zeroShippingIfUnfulfilledCancel`
@@ -261,6 +263,24 @@ Ratios are always computed on read from summed components. Store-level costs (ad
 chargebacks) are added at the daily level, not per order. Completeness counters:
 `orders_missing_cogs`, `revenue_missing_cogs`, `orders_missing_shipping`, `fees_estimated_amount`,
 `fx_issues`, `unclassified_sales_amount`.
+
+## 9a. Derived analyses (Phase 7)
+All are computed in `packages/finance` from the same components and order results; nothing new is stored.
+- **Profit bridge** (D-044): Δ net profit = order volume (ΔO × previous AOV) + order value (rest of Δ revenue)
+  + Σ cost-line effects (previous − current). Steps sum exactly before display rounding.
+- **Store comparison**: P&L lines per store, each over the range in its own time zone; a consolidated total only
+  when all stores share a currency (no FX conversion until a rate source exists, B2).
+- **Customers** (D-045): observed only. Customers = those with an order included by the policy; guest orders are
+  counted apart. New = first order in the range; returning rate = returning ÷ customers ordering in the range;
+  repeat rate = customers with 2+ orders to date; LTV = revenue (and revenue − COGS) to date ÷ customers;
+  CAC = ad spend ÷ new customers; cohorts by first-order month with cumulative event-dated values. Incomplete
+  order history (no `read_all_orders`) is shown as a warning.
+- **Advertising** (D-046): platform-reported value/ROAS and UTM-modeled revenue/ROAS side by side, never merged.
+  UTM-modeled = the order's last-visit `utm_campaign` equals exactly one campaign name or id of the platform named by
+  `utm_source`; everything else is listed as unattributed with the reason. Profit after ads (UTM) = order profit
+  before ads − spend; compared with break-even ROAS = revenue ÷ contribution before ads.
+- **Product ad-spend allocation** (D-047): optional, labelled estimate; store ad spend split over variants by net
+  sales or units (largest remainder at 6 dp, Σ parts = ad spend).
 
 ## 10. Reconciliation
 

@@ -104,6 +104,8 @@ Connected with the store-owned Dev Dashboard app (client credentials). Granted s
 | `SalesAgreement` / `Sale` GID formats in bulk output | VERIFIED: every agreement (order and refund) is `gid://shopify/SalesAgreement/N`, every sale `gid://shopify/Sale/N`; assembler handles both |
 | `read_all_orders` | Not requested on the app. Without it, Shopify's all-time count is 33 vs 32 visible: #1001 (2026-07-27, USD 0.99) is outside the 60-day window. Whether a Dev Dashboard app can be granted it remains UNKNOWN |
 | Tax-inclusive AUD amounts | UNKNOWN (not testable on Luraflo): `taxesIncluded: false` and no tax charged on any order |
+| Customers (Phase 7): customers, new, returning, orders, net sales for 2026-09-20 → 10-19 vs ShopifyQL | VERIFIED: 32 / 32 / 0 / 32 / 2,245.43 identical |
+| Variant weights (Phase 7) | VERIFIED: 7,742 of 7,817 variants have 0 g (Shopify's value when no weight is entered), so weight-tiered shipping rules treat 0 g as unknown (D-048) |
 | Bugs found and fixed by the live run | Bulk query rejected (connection inside the `refunds` list, D-031); disputes access denied via `shopifyPaymentsAccount` (D-032) |
 
 ## Integration strategy (Phase 2 decisions)

@@ -61,3 +61,16 @@ Implemented on the **demo data source only** (live data arrives with Phases 4–
 | Time-zone approximation label for ad accounts in another zone | Done |
 | Ad-group level, ads profitability views, Advertising page | Phase 7 |
 | FX conversion of foreign-currency ad accounts | Engine ready; rate provider blocked (B2) |
+
+## Phase 7 status (2026-10-19)
+| Feature | Status |
+|---|---|
+| Profit variance bridge on the dashboard (volume, order value, each cost line) | Done, unit + demo tested, visually checked |
+| P&L by store with consolidated column (same currency) | Done; FX-converted consolidation waits for a rate source (B2) |
+| P&L export to Excel (XLSX) and PDF, by period or by store | Done, round-trip tested, e2e download |
+| Customers: new/returning, repeat rate, orders per customer, observed LTV (revenue and gross profit), LTV:CAC, cohorts (revenue, gross profit, retention) | Done; **VERIFIED** against ShopifyQL on Luraflo (32 customers, 32 new, 0 returning, 20 Sep – 19 Oct) |
+| Advertising: per-campaign spend, platform ROAS, UTM-modeled orders/revenue/ROAS/profit after ads, break-even marking, unattributed revenue with reasons | Done (demo + DB tests); live Google campaigns pending B4; Luraflo shows the empty state (no ad spend) |
+| Product detail page; optional ad-spend allocation by net sales or units (labelled estimates) | Done |
+| Team: invite by one-time link, roles (owner/admin/editor/viewer), change role, remove, leave, last-owner guard, workspace switch | Done, integration + e2e tested; no email sending yet (link shared by the inviter) |
+| Weight-tiered shipping rules | Done; Luraflo variants mostly have 0 g in Shopify, which the rule treats as unknown (D-048) |
+| Pixel-based multi-touch attribution, AI bill extraction, email reports | Not in M2 scope |

@@ -3,8 +3,8 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 7 — Advanced analytics: IN PROGRESS** (started 2026-10-19). Phase 6 approved by the owner on 2026-10-19
-with the live Google Ads check deferred until the owner completes B4 (resume steps below still apply).
+**Phase 7 — Advanced analytics: COMPLETE, awaiting owner approval ("CONFIRM PHASE 7")** (2026-10-19). Phase 6 was
+approved on 2026-10-19 with the live Google Ads check deferred until the owner completes B4 (resume steps below still apply).
 `SHOPIFY_*` are cloud environment variables. **Never ask for these or Google credentials in chat, never print them.**
 
 Phase 7 plan (PRODUCT_REQUIREMENTS M2):
@@ -35,6 +35,7 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 3. `DATABASE_URL=postgres://profitlens:profitlens@localhost:5432/profitlens pnpm db:migrate`.
 4. To reload Luraflo: sign up a local user in the web app, then `pnpm --filter @profitlens/worker sync connect <email>`,
    `… sync backfill <storeId>` (also computes profit), `… sync status`. `… sync recalc <storeId> [--force]` recomputes results.
+5. Migrations now go up to `0005_team_weight_shipping` (invitations, weight-tiered shipping).
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
@@ -94,8 +95,16 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
   services (connect, discovery, mapping, 6-hourly spend sync with restatements, manual spend), Settings Google Ads card,
   Costs → Ad spend page, worker queues + CLI, migration `0004_ads_sync`, setup guide `docs/GOOGLE_ADS_SETUP.md`.
 
+- Phase 7 (2026-10-19; `docs/FEATURE_PARITY.md` "Phase 7 status", D-044…D-049, FINANCIAL_MODEL §9a):
+  - profit bridge on the dashboard; P&L by store with a same-currency consolidated column; Excel and PDF export;
+  - Customers page (new/returning, repeat rate, observed LTV, LTV:CAC, cohorts), verified against ShopifyQL on Luraflo;
+  - Advertising page (campaign spend, platform vs UTM-modeled ROAS, break-even marking, unattributed revenue);
+  - product detail page and optional, labelled ad-spend allocation (net sales or units);
+  - Settings → Team (one-time email-bound invitation links, roles, last-owner guard, workspace switch);
+  - weight-tiered shipping rules; migration `0005_team_weight_shipping`.
+
 ## In progress
-- Phase 7 (see plan above). Phase 6 live verification still pending B4.
+- Nothing: Phase 7 is waiting for owner approval. Phase 6 live verification still pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -108,6 +117,12 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 - Disputes not linked to an order are stored but not costed.
 - Tax-inclusive pricing, fee tax and lost-chargeback refunds are implemented per D-036 but unverified on real data.
 - Webhooks cannot be received in development (D-029).
+- P&L consolidation across currencies is not available until an FX rate source exists (B2); the page says why.
+- Cohorts and LTV only see stored history: without `read_all_orders` (B7) Luraflo's history starts 2026-10-05, so
+  earlier customers count as new (shown as a warning).
+- UTM-modeled attribution needs orders tagged with `utm_campaign`; Google auto-tagging alone (gclid) is not matched.
+- No email delivery yet: invitation links are shared by the inviter; the workspace switcher lives on the Team page.
+- Weight-tiered shipping uses the variant's current weight (Shopify keeps no history).
 - `next start` warns because `output: "standalone"` is set; production will run `node .next/standalone/server.js` (Phase 9 Docker).
 
 ## External blockers / owner actions
@@ -123,10 +138,12 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Phase 7 (in progress). Owner: B4 (Google Ads access; then the live check), B8 (Luraflo costs).
-2. Phase 7 (after approval): advanced analytics.
+1. Owner: review Phase 7 and reply "CONFIRM PHASE 7"; B4 (Google Ads access, then "Continue Phase 6" for the live
+   check); B8 (Luraflo costs, shipping rule, expenses).
+2. Phase 8 (after approval), per the master brief.
 
 ## Test results
+- 2026-10-19 (Phase 7): `pnpm test` 177/177, `pnpm typecheck`, `next build`, Playwright 12/12; Luraflo customers = ShopifyQL.
 - 2026-10-19 (Phase 6): `pnpm test` 148/148, `pnpm typecheck`, `next build`, Playwright 12/12; live Google Ads run pending B4.
 - 2026-10-19 (Phase 5): `pnpm test` 129/129, `pnpm typecheck`, `next build`, Playwright 12/12; live Luraflo checks pass.
 - 2026-10-19 (Phase 4 live): Luraflo verification passed (see above); `pnpm test` 81/81, `pnpm typecheck`,
