@@ -3,21 +3,10 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 5 — Finance engine & cost management: IN PROGRESS** (started 2026-10-19).
-Phase 4 approved by the owner on 2026-10-19 ("CONFIRM PHASE 4").
+**Phase 5 — Finance engine & cost management: COMPLETE, awaiting owner approval** (2026-10-19).
+Phase 4 approved by the owner on 2026-10-19.
 `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` and `SHOPIFY_SHOP_DOMAIN` are cloud environment variables.
 **Never ask for these values in chat, never print them.**
-
-Phase 5 plan:
-1. Pure engine in `packages/finance/src/engine`: order profit (revenue components, COGS with effective-dated
-   costs and return reversals, shipping/handling rules, transaction fees, chargebacks), dated per store-local day,
-   with completeness and trace; expense allocation per day; FINANCIAL_MODEL §11 test matrix.
-2. Result tables (`order_daily_result`, `order_cogs_line`) and a `ProfitService` in core: load inputs from the DB,
-   recalculate (skipping unchanged inputs), aggregate `daily_store_metrics`, run after every sync.
-3. DB-backed reporting for live stores (dashboard, orders, products, P&L), replacing the 409 state (D-028).
-4. Cost management: product costs (per variant/product, CSV import), shipping and handling rules, payment fee
-   rules, expenses, versioned calculation policy. Every change is audited and triggers recalculation.
-5. Verify on Luraflo against Shopify, tests, docs, report.
 
 ## Fresh-container setup (any new session)
 1. `pg_ctlcluster 16 main start`. If the `profitlens` role is missing (password auth fails):
@@ -27,7 +16,7 @@ Phase 5 plan:
    delete the empty `SHOPIFY_*` lines. Dev keys only, never committed. The local DB is empty in a fresh container.
 3. `DATABASE_URL=postgres://profitlens:profitlens@localhost:5432/profitlens pnpm db:migrate`.
 4. To reload Luraflo: sign up a local user in the web app, then `pnpm --filter @profitlens/worker sync connect <email>`,
-   `… sync backfill <storeId>`, `… sync status`.
+   `… sync backfill <storeId>` (also computes profit), `… sync status`. `… sync recalc <storeId> [--force]` recomputes results.
 
 ## Completed
 - REA installed for Claude Code (v6.7.0) and verified (MCP tools listed; CLI used for long runs).
@@ -74,8 +63,17 @@ Phase 5 plan:
     (counts, gross/discounts/net sales per day, fees, refund lines all identical). Two bugs found and fixed:
     bulk refund lines (D-031) and disputes scope (D-032). See `docs/INTEGRATIONS.md` "Live verification".
 
+- Phase 5 (2026-10-19; see `docs/FEATURE_PARITY.md` "Phase 5 status", decisions D-033…D-040):
+  - `packages/finance/src/engine`: pure order-profit engine (v1.0.1) + expense allocation, FINANCIAL_MODEL §11 tests;
+  - migration `0003_profit_results` (`order_daily_result`, `order_cogs_line`, `order_profit` additions);
+  - `packages/core/src/profit`: ProfitService (recalc with inputs hash, aggregation, amount reconciliation),
+    DbReportingDataSource (live reports), cost services (product costs + CSV, shipping/handling, fees, expenses, policy);
+  - sync recalculates changed orders; worker queue `profit.recalc-store`; CLI `sync recalc`;
+  - web: live dashboard/orders/products/P&L, cost pages, editable versioned policy; reports default to the connected store;
+  - verified on Luraflo (see TESTING.md).
+
 ## In progress
-- Phase 5 (see plan above).
+- None. Waiting for Phase 5 approval.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -83,7 +81,10 @@ Phase 5 plan:
 ## Known bugs / limitations
 - Dashboard card selection is per browser (localStorage), not per user yet (D-023).
 - Auth rate limiting uses in-memory storage (single instance only) (D-021).
-- Live store reports show "profit engine pending" until Phase 5 (D-028).
+- Per-order cost overrides are supported by the engine but have no UI yet.
+- Product report uses event dates even when the policy restates refunds onto order dates (store totals follow the policy).
+- Disputes not linked to an order are stored but not costed.
+- Tax-inclusive pricing, fee tax and lost-chargeback refunds are implemented per D-036 but unverified on real data.
 - Webhooks cannot be received in development (D-029).
 - `next start` warns because `output: "standalone"` is set; production will run `node .next/standalone/server.js` (Phase 9 Docker).
 
@@ -94,17 +95,17 @@ Phase 5 plan:
 | B2 | Network: Shopify + Google hosts now allowed (verified 2026-10-18). Still blocked: FX-rate hosts (openexchangerates.org, ECB, frankfurter), `app.trueprofit.io`, `be.trueprofit.io`, `developers.facebook.com` | FX needed for multi-currency tests against live rates (Phase 5+) |
 | B3 | ~~Shopify app + env vars~~ RESOLVED 2026-10-19 (connected, verified). | — |
 | B7 | Optional: `read_all_orders` for full history (today 1 order, #1001 from 2026-07-27, is outside the 60-day window). Unknown whether a Dev Dashboard app can be granted it | Before relying on history older than 60 days |
-| B8 | Luraflo has no product unit costs in Shopify: COGS will show as missing until costs are entered (Phase 5 cost pages or Shopify admin) | Phase 5 profit figures |
+| B8 | **Owner action:** Luraflo has no product costs (41 sold variants, 7,817 total) and no shipping rule, so every order is flagged incomplete and profit is overstated. Enter costs on Product costs (export CSV → fill → import), add a shipping rule and the running expenses (Shopify plan, apps) | Accurate profit figures |
 | B6 | Webhook delivery needs a public URL; until Phase 9 the 15-min poll covers it (D-029) | Phase 9 |
 | B4 | Google Cloud project + OAuth client (Google Ads API access level Explorer/Basic) | Phase 6 |
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Phase 5 (in progress): profit engine (order results from ledger + costs + fees + policy), cost management
-   pages (product costs, shipping, fees, expenses), DB-backed ReportingDataSource for live stores.
-2. Phase 6 (after approval): Google Ads (needs B4).
+1. Owner approval of Phase 5; owner enters Luraflo costs (B8).
+2. Phase 6 (after approval): Google Ads integration and manual ad spend entry (needs B4).
 
 ## Test results
+- 2026-10-19 (Phase 5): `pnpm test` 129/129, `pnpm typecheck`, `next build`, Playwright 12/12; live Luraflo checks pass.
 - 2026-10-19 (Phase 4 live): Luraflo verification passed (see above); `pnpm test` 81/81, `pnpm typecheck`,
   `next build`, Playwright 10/10.
 - 2026-10-18 (Phase 4): `pnpm test` 81/81 passed; `pnpm typecheck` and `next build` pass; Playwright 10/10 passed.

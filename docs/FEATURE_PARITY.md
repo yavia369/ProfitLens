@@ -5,7 +5,7 @@ This file tracks **implementation progress** against it. It gets updated at the 
 
 | Milestone | Planned features | Implemented | Tested |
 |---|---|---|---|
-| M1 (Phases 3–6) | see matrix rows marked M1 | Frontend foundation (Phase 3): see below | e2e + unit |
+| M1 (Phases 3–6) | see matrix rows marked M1 | Phases 3–5: see below (Google Ads: Phase 6) | e2e + unit + integration |
 | M2 (Phase 7) | see matrix rows marked M2 | 0 | 0 |
 | M3 (Phase 8) | see matrix rows marked M3 | 0 | 0 |
 
@@ -34,4 +34,19 @@ Implemented on the **demo data source only** (live data arrives with Phases 4–
 | Webhooks (orders, refunds, products, disputes, uninstall, GDPR) | Done, tested; live delivery blocked until deployment |
 | Daily order-count reconciliation | Done, tested |
 | Sync Center (status, scopes, history limit, counts, jobs, issues, latest orders, actions) | Done, e2e-tested (empty state) |
-| Profit reports for live stores | Deliberately blocked with an explanatory state until Phase 5 (D-028) |
+| Profit reports for live stores | Superseded by Phase 5 (D-028 replaced by D-034) |
+
+## Phase 5 status (2026-10-19)
+| Feature | Status |
+|---|---|
+| Finance engine: revenue components from the event-dated ledger, COGS with effective-dated landed costs and return reversals, shipping/handling rules, transaction fees (actual, rule, Shopify third-party fee), chargebacks, completeness flags, per-order trace | Done; FINANCIAL_MODEL §11 matrix covered (finance 57 tests) |
+| Recalculation (inputs hash, after every sync, after cost changes; background job for large stores) and daily aggregation | Done, integration-tested, run live on Luraflo |
+| Amount reconciliation (aggregates vs independent ledger SQL) | Done, tested; live: 0 mismatches over 30 days |
+| Live reports: dashboard, orders + calculation drawer, products, P&L for connected stores | Done; live revenue per day equals Shopify net sales |
+| Product costs: per variant or whole product, effective dates, history, CSV import (preview/diff) and export | Done, integration + e2e tested |
+| Shipping rules (per order, per item, first + additional, tiers; countries; priority; dates), handling rules (one handling mode) | Done, tested |
+| Fee rules per gateway, Shopify third-party fee rate, gateway overview with actual effective rates | Done, tested |
+| Custom expenses (one-time, recurring spread/on-date, per order, % of revenue/net sales/ad spend; marketing categories; as ad spend) | Done, tested (applied on read) |
+| Versioned calculation policy (owners/admins), full recalculation on change | Done, tested |
+| Manual ad spend entry UI, Google Ads | Phase 6 (ad spend rows are already included in reports when present) |
+| Per-order cost overrides UI | Engine and storage done; UI not built (later phase) |

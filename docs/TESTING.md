@@ -17,6 +17,9 @@
   Each integration suite uses its own database `<name>_<suite>` (e.g. `profitlens_test_db`, `profitlens_test_core`),
   created on demand and re-migrated at start (`freshTestDatabase` in `@profitlens/db/testing`), so suites can run in parallel.
   The role needs `CREATEDB` (true for the local container role and the CI service user).
+- E2E sign-ups: the suite creates 4 accounts per run (smoke + costs, desktop + mobile); the auth limit is 5 sign-ups per
+  minute per IP (D-021, in-memory), so re-running within a minute can fail sign-up — restart the server or wait.
+- The costs e2e test seeds a connected store directly in Postgres (`DATABASE_URL`) for the signed-up user's workspace.
 - Shopify is never called from tests: `packages/core` integration tests drive the full sync through an in-memory fake of
   the token, GraphQL, bulk and JSONL endpoints (`fakeShopify`).
 
@@ -36,3 +39,8 @@
 | 2026-10-19 (Phase 4 live) | `pnpm test` | 81/81 passed (bulk tests now assert refund lines are absent from bulk output, flagged for refetch, and rejected by the mapper if unfetched; fake Shopify emits bulk JSONL without refund lines like Shopify does) |
 | 2026-10-19 (Phase 4 live) | `pnpm typecheck`, `next build`, `playwright test` | pass; Playwright 10/10 |
 | 2026-10-19 | Sync Center (`/settings/sync`) with the live store | renders Luraflo: counts, 60-day history badge, job history incl. the two failed runs with their Shopify errors, latest orders |
+| 2026-10-19 (Phase 5) | `pnpm test` (all packages) | 129/129 passed — finance 57 (adds 40 engine tests covering the FINANCIAL_MODEL §11 matrix: discounts (line/order level), full/partial/late refunds and restock types, refund/chargeback dating policies, multi-product, effective-dated costs and reversal at original cost, missing costs and fallback estimate, overrides, order edits, split payments, auth+capture, gateway rules with half-up rounding, third-party fee, missing fees, chargebacks lost/won/accepted with refund de-duplication, shipping rule types/countries/priority/dates, cancelled-before-fulfilment, gift card sale and redemption, tax-inclusive and tax-exclusive, tips/duties/unclassified sales, exclusions, determinism, Σ days = lifetime; expenses: monthly spread across month boundaries, DST day, on-date, weekly, daily, one-time, end dates, per-order and % expenses, ad-spend flag, marketing memo, FX with 7-day fallback and missing rate), core 32 (adds profit results/aggregation/hash skip, cost & policy recalculation, reconciliation catching a corrupted aggregate, incremental recalculation, live reporting source incl. expenses/ad spend on read and tenant isolation, cost services: history splitting, handling mode, permissions, CSV preview/apply/blank rows/round trip, rules, fee validation messages, policy versions, expenses), shopify 21, db 12, web 7 |
+| 2026-10-19 (Phase 5) | `pnpm typecheck`, `next build` | pass |
+| 2026-10-19 (Phase 5) | `playwright test` | 12/12 passed — adds costs e2e (desktop + mobile): product cost for a whole product, CSV import preview with an invalid row, shipping rule, fee rule + validation error, expense, new policy version, and the recalculated order profit on the Orders page |
+| 2026-10-19 (Phase 5 live) | Luraflo: `sync recalc`, `incremental`, `reconcile 30` + ShopifyQL | 32 orders computed; revenue per day = Shopify net sales on all 11 days (A$2,245.43); second run recomputes 0 (hash); incremental recalculated only the changed order; 0 order-count and 0 amount mismatches. All orders flagged incomplete (no product costs or shipping rules configured yet) |
+

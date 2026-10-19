@@ -308,7 +308,8 @@ export class DbReportingDataSource implements ReportingDataSource {
 
     const breakdown: BreakdownLine[] = [];
     const push = (key: string, label: string, amount: Decimal, status: CostStatus | null, source: string, date: string) => {
-      if (!amount.isZero() || status === "missing") breakdown.push({ key, label, amount: m(amount), status, source, ...(date !== o.processedLocalDate ? { date } : {}) });
+      const text = source.charAt(0).toUpperCase() + source.slice(1);
+      if (!amount.isZero() || status === "missing") breakdown.push({ key, label, amount: m(amount), status, source: text, ...(date !== o.processedLocalDate ? { date } : {}) });
     };
     for (const d of days) {
       const v = (k: "grossSales" | "discounts" | "returns" | "shippingCharged" | "tips" | "adjustments" | "cogs" | "shippingCost" | "handlingCost" | "transactionFees" | "chargebackLoss" | "chargebackFees") => dec(d[k]);

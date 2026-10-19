@@ -57,10 +57,12 @@ FX source <── worker: fx.daily (provider interface; ECB / openexchangerates)
 
 worker pipeline per changed order:
   normalize facts → upsert (idempotent, by external GID + updated_at guard)
-  → finance.computeOrder(inputs, policy) → order_profit (trace JSON)
-  → mark (store, local_date) dirty → aggregate.daily → daily_store_metrics
+  → finance.computeOrderProfit(inputs, costs, policy) → order_profit (trace JSON) + order_daily_result + order_cogs_line
+  → re-aggregate the touched (store, local_date) rows → daily_store_metrics
+  (implemented in packages/core/src/profit: ProfitService; Phase 5)
 
-web reads: daily_store_metrics (+ store-level ad/expense facts) → core.metrics.compute(range)
+web reads: daily_store_metrics + ad spend, expenses and new customers applied on read (D-034)
+           → core.metrics.compute(range)
            → finance.metricRegistry → API JSON (money as strings) → UI
 ```
 
@@ -71,7 +73,7 @@ web reads: daily_store_metrics (+ store-level ad/expense facts) → core.metrics
 | Variant cost version added/edited | orders containing the variant with order date in the version's range |
 | Shipping/handling/fee rule changed | orders in the rule's effective range |
 | Policy changed | all orders of the store (background job with progress) |
-| Expense / ad spend changed | daily rows in range (no order recompute) |
+| Expense / ad spend changed | nothing (applied when reports are read, D-034) |
 
 Each order result stores an `inputs_hash`, so recompute is skipped when nothing changed (idempotent).
 
@@ -162,7 +164,7 @@ constraints, partial unique index). Postgres 16 + the `btree_gist` extension.
 | Orders | `customer` (PII-minimised), `order`, `order_line_item`, `sale_ledger_entry`, `refund`, `refund_line_item`, `payment_transaction`, `dispute`, `fulfillment` | every Shopify object unique on `(store_id, shopify_gid)`; ledger indexed by `(store, happened_local_date)` |
 | Cost settings | `shipping_rule`, `handling_rule`, `gateway_fee_rule`, `order_cost_override`, `expense_category`, `expense`, `financial_policy` | interval checks; gateway rules can't overlap; expense fields validated per type; one active override per (order, component); policy `(store, version)` unique |
 | Advertising | `ad_account`, `ad_campaign`, `ad_group`, `ad_spend_daily` | `(account, level, entity, date, source)` unique; API spend ≥ 0 |
-| Results | `fx_rate`, `order_profit` (trace JSON), `daily_store_metrics` | `daily(store, local_date)` unique; ratios never stored |
+| Results | `fx_rate`, `order_profit` (trace JSON, inputs hash, engine/policy version), `order_daily_result` (one order's contribution per local day), `order_cogs_line` (COGS per line and day, feeds the product report), `daily_store_metrics` (Σ order_daily_result) | `daily(store, local_date)` and `order_daily_result(order, local_date)` unique; ratios never stored |
 | Operations | `sync_job`, `webhook_event`, `audit_log`, `reconciliation_issue` | `webhook_event(provider, external_id)` unique (dedupe) |
 
 All money uses `NUMERIC(20,6)`, returned to Node as strings. FX rates use `NUMERIC(24,12)`.

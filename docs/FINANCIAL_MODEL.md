@@ -4,6 +4,12 @@
 > must implement exactly this document. Any change needs a DECISIONS entry plus an engine version bump.
 > Shopify field semantics are cited from shopify.dev 2026-10 docs. Items marked **[verify]** must be
 > confirmed against real orders in Phase 4 (fixture tests capture the confirmed behaviour).
+>
+> **Implementation (Phase 5, 2026-10-19):** `packages/finance/src/engine` (engine version 1.0.1), tests in
+> `packages/finance/test/engine.test.ts`. Interpretations and choices made while implementing are recorded as
+> D-033…D-040; the ones based on unverified Shopify semantics are D-036 (INFERRED). Verified on Luraflo: revenue
+> per day equals Shopify's net sales; `SalesAgreement`/`Sale` handling; refund dating; Shopify Payments fees.
+> Still **[verify]**: tax-inclusive stores (Luraflo charges no tax), lost-chargeback refunds, fee tax.
 
 ## 0. Principles
 
