@@ -160,6 +160,26 @@ describe("reporting service", () => {
     expect(dec(all.toDate.revenuePerCustomer!).toFixed(6)).toBe(life.revenue.div(all.toDate.customers).toFixed(6));
   });
 
+  it("advertising: campaigns add up to the ad spend, UTM groups to the revenue, platform values stay separate", async () => {
+    const range = { start: "2026-09-01", end: "2026-09-30" };
+    const r = (await service.advertising("demo", range))!;
+    const totals = sumComponents(await source.getDailyComponents("demo", range));
+    const spend = sum(r.campaigns.map((c) => dec(c.spend!)));
+    expect(spend.plus(dec(r.totals.otherAdSpend)).toFixed(6)).toBe(totals.adSpend.toFixed(6));
+    expect(dec(r.totals.otherAdSpend).isZero()).toBe(true); // the demo has no expenses flagged as ad spend
+    const utmRevenue = sum([...r.campaigns.map((c) => dec(c.utmRevenue ?? "0")), ...r.unattributed.map((g) => dec(g.revenue))]);
+    expect(utmRevenue.toFixed(6)).toBe(totals.revenue.toFixed(6));
+    const brand = r.campaigns.find((c) => c.campaignName === "Search - Brand")!;
+    expect(brand.utmOrders).toBeGreaterThan(0);
+    expect(dec(brand.utmRoas!).toFixed(6)).toBe(dec(brand.utmRevenue!).div(dec(brand.spend!)).toFixed(6));
+    // Meta is manual spend without campaigns: UTM figures do not apply and its traffic is reported, not guessed.
+    expect(r.campaigns.find((c) => c.platform === "meta")).toMatchObject({ attributable: false, utmOrders: null, utmRoas: null });
+    expect(r.unattributed.map((g) => g.reason)).toEqual(expect.arrayContaining(["no_utm", "not_paid_platform", "no_campaign_data", "no_matching_campaign"]));
+    expect(r.totals.breakEvenRoas).not.toBeNull();
+    const google = (await source.getAdSpendByChannel("demo", range)).find((c) => c.channel === "google_ads")!;
+    expect(dec(r.totals.platformValue!).toFixed(6)).toBe(dec(google.platformConversionValue!).toFixed(6));
+  });
+
   it("returns null for unknown stores", async () => {
     expect(await service.dashboard("nope", { start: "2026-10-01", end: "2026-10-02" }, "none")).toBeNull();
   });

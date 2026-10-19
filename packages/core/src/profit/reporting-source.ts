@@ -10,12 +10,14 @@ import {
   worstStatus,
   ZERO,
   type CostStatus as EngineCostStatus,
+  type CampaignSpendRow,
   type CustomerActivityRow,
   type DailyComponents,
   type DateRange,
   type LocalDate,
   type ExpenseInput,
   type FxLookup,
+  type UtmRow,
 } from "@profitlens/finance";
 import { schema, type Database } from "@profitlens/db";
 import { and, asc, between, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -126,32 +128,101 @@ export class DbReportingDataSource implements ReportingDataSource {
     return fxLookupFrom(rates, currency);
   }
 
-  /** Daily ad spend per account in store currency. Campaign rows are used when an account has them, else account rows. */
-  private async adSpendRows(storeId: string, currency: string, timezone: string, range: DateRange) {
+  /**
+   * Daily ad spend per account and campaign in store currency. Campaign rows are used when an account has them,
+   * else account rows (never both); imported data wins over a plain manual entry for the same platform and day.
+   */
+  private async adSpendDetail(storeId: string, currency: string, timezone: string, range: DateRange) {
     const rows = await this.db.execute(sql`
       with spend as (
-        select a.id as account_id, a.platform, a.currency, a.timezone, d.date::text as date, d.source, d.level,
-          sum(d.spend) as spend, sum(d.conversion_value) as value
+        select a.id as account_id, a.platform, a.name as account_name, a.currency, a.timezone, d.date::text as date, d.source, d.level,
+          d.entity_external_id as entity, sum(d.spend) as spend, sum(d.conversion_value) as value, sum(d.clicks) as clicks
         from ad_spend_daily d join ad_account a on a.id = d.ad_account_id
         where a.store_id = ${storeId} and a.organization_id = ${this.organizationId} and d.date between ${range.start}::date and ${range.end}::date
           -- Imported data wins over a plain manual entry for the same platform and day; adjustments add on top.
           and not (d.source = 'manual' and not d.is_adjustment and exists (
             select 1 from ad_spend_daily d2 join ad_account a2 on a2.id = d2.ad_account_id
             where a2.store_id = a.store_id and a2.platform = a.platform and d2.source = 'api' and d2.date = d.date))
-        group by 1, 2, 3, 4, 5, 6, 7
+        group by 1, 2, 3, 4, 5, 6, 7, 8, 9
       ),
       pick as (select account_id, bool_or(level = 'campaign') as has_campaigns from spend group by 1)
-      select s.platform, s.currency, s.date, s.source, bool_or(s.timezone <> ${timezone}) as other_tz,
-        sum(s.spend)::text as spend, sum(s.value)::text as value
+      select s.account_id, s.platform, s.account_name, s.currency, s.date, s.source, s.entity, s.level::text as level,
+        c.name as campaign_name, s.timezone <> ${timezone} as other_tz,
+        s.spend::text as spend, s.value::text as value, s.clicks::text as clicks
       from spend s join pick p on p.account_id = s.account_id
-      where s.level = case when p.has_campaigns then 'campaign'::ad_spend_level else 'account'::ad_spend_level end
-      group by 1, 2, 3, 4`);
-    const list = rows.rows as { platform: string; currency: string; date: string; source: "api" | "manual"; other_tz: boolean; spend: string; value: string | null }[];
+      left join ad_campaign c on s.level = 'campaign' and c.ad_account_id = s.account_id and c.external_id = s.entity
+      where s.level = case when p.has_campaigns then 'campaign'::ad_spend_level else 'account'::ad_spend_level end`);
+    type Row = {
+      account_id: string; platform: string; account_name: string; currency: string; date: string; source: "api" | "manual"; entity: string;
+      level: string; campaign_name: string | null; other_tz: boolean; spend: string; value: string | null; clicks: string | null;
+    };
+    const list = rows.rows as Row[];
     const fx = await this.fxFor(currency, list.map((r) => r.currency), range);
     return list.map((r) => {
       const rate = fx(r.currency, r.date);
       return { ...r, rate, spendStore: rate ? dec(r.spend).times(rate) : null, valueStore: rate && r.value ? dec(r.value).times(rate) : null };
     });
+  }
+
+  /** Daily ad spend per platform and source in store currency (null where an exchange rate is missing). */
+  private async adSpendRows(storeId: string, currency: string, timezone: string, range: DateRange) {
+    const out = new Map<string, { platform: string; date: string; source: "api" | "manual"; other_tz: boolean; spendStore: Decimal | null; valueStore: Decimal | null }>();
+    for (const r of await this.adSpendDetail(storeId, currency, timezone, range)) {
+      const key = `${r.platform}|${r.currency}|${r.date}|${r.source}`;
+      const a = out.get(key);
+      if (!a) {
+        out.set(key, { platform: r.platform, date: r.date, source: r.source, other_tz: r.other_tz, spendStore: r.spendStore, valueStore: r.valueStore });
+        continue;
+      }
+      a.other_tz ||= r.other_tz;
+      a.spendStore = a.spendStore && r.spendStore ? a.spendStore.plus(r.spendStore) : null;
+      a.valueStore = a.valueStore || r.valueStore ? (a.valueStore ?? ZERO).plus(r.valueStore ?? ZERO) : null;
+    }
+    return [...out.values()];
+  }
+
+  async getCampaignSpend(storeId: string, range: DateRange): Promise<CampaignSpendRow[]> {
+    const store = await this.store(storeId);
+    const out = new Map<string, CampaignSpendRow & { spendD: Decimal | null; valueD: Decimal | null; clicksN: number | null }>();
+    for (const r of await this.adSpendDetail(storeId, store.currency, store.timezone, range)) {
+      const key = `${r.account_id}|${r.entity}|${r.source}`;
+      const a = out.get(key) ?? {
+        platform: r.platform as CampaignSpendRow["platform"],
+        accountName: r.account_name,
+        campaignId: r.entity,
+        campaignName: r.campaign_name ?? (r.level === "account" ? (r.source === "manual" ? "Manual entries" : "Whole account") : r.entity),
+        source: r.source,
+        attributable: r.level === "campaign",
+        spend: null,
+        platformValue: null,
+        clicks: null,
+        otherTimezone: false,
+        spendD: ZERO,
+        valueD: null,
+        clicksN: null,
+      };
+      out.set(key, {
+        ...a,
+        // A day without an exchange rate makes the campaign's total unknown, never understated.
+        spendD: a.spendD && r.spendStore ? a.spendD.plus(r.spendStore) : null,
+        valueD: r.valueStore ? (a.valueD ?? ZERO).plus(r.valueStore) : a.valueD,
+        clicksN: r.clicks === null ? a.clicksN : (a.clicksN ?? 0) + Number(r.clicks),
+        otherTimezone: a.otherTimezone || r.other_tz,
+      });
+    }
+    return [...out.values()].map(({ spendD, valueD, clicksN, ...c }) => ({ ...c, spend: spendD ? m(spendD) : null, platformValue: valueD ? m(valueD) : null, clicks: clicksN }));
+  }
+
+  async getUtmPerformance(storeId: string, range: DateRange): Promise<UtmRow[]> {
+    await this.store(storeId);
+    const res = await this.db.execute(sql`
+      select o.utm_source, o.utm_medium, o.utm_campaign, sum(r.orders_count)::int as orders, sum(r.revenue)::text as revenue,
+        sum(r.revenue - r.cogs - r.shipping_cost - r.handling_cost - r.transaction_fees - r.chargeback_loss - r.chargeback_fees)::text as profit
+      from order_daily_result r join "order" o on o.id = r.order_id
+      where r.store_id = ${storeId} and r.local_date between ${range.start}::date and ${range.end}::date
+      group by 1, 2, 3`);
+    type Row = { utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; orders: number; revenue: string; profit: string };
+    return (res.rows as Row[]).map((r) => ({ source: r.utm_source, medium: r.utm_medium, campaign: r.utm_campaign, orders: r.orders, revenue: r.revenue, orderProfit: r.profit }));
   }
 
   private async expenses(storeId: string): Promise<ExpenseInput[]> {

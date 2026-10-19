@@ -3,11 +3,12 @@
 import type { CustomerReport, StoreSummary } from "@profitlens/core";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { BarList } from "@/components/charts/bar-list";
 import { DemoBanner, ReportToolbar } from "@/components/shell/report-toolbar";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Stat, StatGrid } from "./stat";
 import { NativeSelect } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet } from "@/lib/api-client";
@@ -35,38 +36,6 @@ const COHORT_METRICS: Record<CohortMetric, { label: string; description: string;
     pick: (c) => c.retention,
   },
 };
-
-function Stat({ label, value, note, warning }: { label: string; value: string; note?: ReactNode; warning?: string | null }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <span className="text-sm leading-snug text-muted-foreground">{label}</span>
-      <p className="flex items-center gap-1.5 text-lg font-semibold tracking-tight tabular">
-        <span className="truncate">{value}</span>
-        {warning ? (
-          <span title={warning} className="shrink-0 text-warning">
-            <AlertTriangle className="size-3.5" aria-hidden />
-            <span className="sr-only">({warning})</span>
-          </span>
-        ) : null}
-      </p>
-      {note ? <span className="text-xs text-subtle">{note}</span> : null}
-    </div>
-  );
-}
-
-function StatGrid({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3">{children}</CardContent>
-    </Card>
-  );
-}
 
 export function CustomersView() {
   const [params, , qs] = useReportParams();

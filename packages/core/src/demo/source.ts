@@ -3,9 +3,12 @@ import {
   dec,
   Decimal,
   eachDay,
+  roundToMinor,
   toMoneyString,
   ZERO,
+  type CampaignSpendRow,
   type CustomerActivityRow,
+  type UtmRow,
   type DailyComponents,
   type DateRange,
   type LocalDate,
@@ -22,8 +25,8 @@ import type {
   ReportingDataSource,
   StoreSummary,
 } from "../reporting/types";
-import { DEMO_CATALOG, DEMO_FIXED_EXPENSES, DEMO_RULES, DEMO_STORE } from "./catalog";
-import { demoAdSpend, eventRevenue, generateDemoHistory, orderEvents, type DemoEvent, type DemoHistory, type DemoOrder } from "./generator";
+import { DEMO_CATALOG, DEMO_FIXED_EXPENSES, DEMO_GOOGLE_CAMPAIGNS, DEMO_RULES, DEMO_STORE } from "./catalog";
+import { demoAdSpend, demoUtm, eventRevenue, generateDemoHistory, orderEvents, type DemoEvent, type DemoHistory, type DemoOrder } from "./generator";
 
 const m = (d: Decimal) => toMoneyString(d);
 
@@ -174,6 +177,53 @@ export class DemoDataSource implements ReportingDataSource {
       },
       { channel: "meta", label: "Meta (manual entries)", source: "manual", spend: m(meta), platformConversionValue: null, platformRoas: null },
     ];
+  }
+
+  async getCampaignSpend(storeId: string, range: DateRange): Promise<CampaignSpendRow[]> {
+    const channels = await this.getAdSpendByChannel(storeId, range);
+    const google = channels.find((c) => c.channel === "google_ads");
+    const meta = channels.find((c) => c.channel === "meta");
+    if (!google || !meta) return [];
+    // Shares of the exact channel totals; the last campaign takes the remainder so campaigns sum to the channel.
+    const split = (total: string, key: "share" | "valueShare" = "share") => {
+      const parts = DEMO_GOOGLE_CAMPAIGNS.slice(0, -1).map((c) => roundToMinor(dec(total).times(c[key]), DEMO_STORE.currency));
+      return [...parts, parts.reduce((rest, p) => rest.minus(p), dec(total))];
+    };
+    const spend = split(google.spend);
+    const value = split(google.platformConversionValue ?? "0", "valueShare");
+    return [
+      ...DEMO_GOOGLE_CAMPAIGNS.map((c, i) => ({
+        platform: "google_ads" as const,
+        accountName: "Demo Google Ads",
+        campaignId: c.id,
+        campaignName: c.name,
+        source: "api" as const,
+        attributable: true,
+        spend: m(spend[i]!),
+        platformValue: m(value[i]!),
+        clicks: null,
+        otherTimezone: false,
+      })),
+      { platform: "meta", accountName: "Manual ad spend", campaignId: "manual:demo-meta", campaignName: "All Meta spend (manual entries)", source: "manual", attributable: false, spend: meta.spend, platformValue: null, clicks: null, otherTimezone: false },
+    ];
+  }
+
+  async getUtmPerformance(storeId: string, range: DateRange): Promise<UtmRow[]> {
+    if (storeId !== DEMO_STORE.id) return [];
+    const h = this.data();
+    const acc = new Map<string, { utm: ReturnType<typeof demoUtm>; orders: number; revenue: Decimal; profit: Decimal }>();
+    for (const date of eachDay(range)) {
+      for (const e of h.eventsByDate.get(date) ?? []) {
+        const utm = demoUtm(e.orderId);
+        const key = `${utm.source}|${utm.medium}|${utm.campaign}`;
+        const a = acc.get(key) ?? { utm, orders: 0, revenue: ZERO, profit: ZERO };
+        const revenue = eventRevenue(e);
+        // Same order profit as the demo Orders page (orderTotals).
+        const costs = e.cogs.plus(e.shippingCost).plus(e.transactionFees).plus(e.chargebackLoss).plus(e.chargebackFees).plus(e.variableExpenses);
+        acc.set(key, { utm, orders: a.orders + e.orders, revenue: a.revenue.plus(revenue), profit: a.profit.plus(revenue.minus(costs)) });
+      }
+    }
+    return [...acc.values()].map((a) => ({ ...a.utm, orders: a.orders, revenue: m(a.revenue), orderProfit: m(a.profit) }));
   }
 
   private toRow(order: DemoOrder, now: Date): OrderRow {

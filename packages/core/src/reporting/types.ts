@@ -1,4 +1,4 @@
-import type { CustomerActivityRow, DailyComponents, DateRange, LocalDate, MoneyString } from "@profitlens/finance";
+import type { CampaignSpendRow, CustomerActivityRow, DailyComponents, DateRange, LocalDate, MoneyString, UtmRow } from "@profitlens/finance";
 
 export type CostStatus = "actual" | "rule" | "manual" | "estimated" | "missing";
 
@@ -121,4 +121,8 @@ export interface ReportingDataSource {
    * `historyStart` look new.
    */
   getCustomerActivity(storeId: string, end: LocalDate): Promise<CustomerActivity>;
+  /** Spend per campaign (or per account where there are no campaigns) in store currency, with the same double-counting rules as the totals. */
+  getCampaignSpend(storeId: string, range: DateRange): Promise<CampaignSpendRow[]>;
+  /** Event-dated revenue and order profit in the range grouped by the orders' last-visit UTM parameters. */
+  getUtmPerformance(storeId: string, range: DateRange): Promise<UtmRow[]>;
 }

@@ -77,3 +77,10 @@ export const DEMO_RULES = {
   packagingPerOrder: "1.20",
   chargebackFee: "25.00",
 } as const;
+
+/** Synthetic Google Ads campaigns: each takes a fixed share of the day's Google spend and of its platform value. */
+export const DEMO_GOOGLE_CAMPAIGNS = [
+  { id: "20431001", name: "Search - Brand", share: "0.22", valueShare: "0.31" },
+  { id: "20431002", name: "Shopping - All products", share: "0.48", valueShare: "0.47" },
+  { id: "20431003", name: "PMax - Prospecting", share: "0.30", valueShare: "0.22" },
+] as const;

@@ -1,9 +1,12 @@
 import {
   addTotals,
+  attributeCampaigns,
+  belowBreakEven,
   customerAnalytics,
   bucketKey,
   comparisonRange,
   profitBridge,
+  ratio,
   completeness,
   computeMetrics,
   dec,
@@ -120,6 +123,63 @@ export interface CustomerReport {
   }[];
 }
 
+/** Advertising profitability (Advertising page). Platform-reported and UTM-modeled figures are kept apart. */
+export interface AdsReport {
+  readonly store: StoreSummary;
+  readonly range: DateRange;
+  readonly totals: {
+    readonly adSpend: string;
+    readonly revenue: string;
+    /** Store revenue ÷ ad spend. */
+    readonly blendedRoas: string | null;
+    readonly breakEvenRoas: string | null;
+    readonly contributionAfterAds: string;
+    readonly platformValue: string | null;
+    /** Platform value ÷ spend of the campaigns that report a value. */
+    readonly platformRoas: string | null;
+    readonly utmRevenue: string;
+    /** UTM-attributed revenue ÷ spend of campaign rows (account-level spend cannot be matched). */
+    readonly utmRoas: string | null;
+    /** Ad spend not tied to a campaign row: expenses flagged as ad spend. */
+    readonly otherAdSpend: string;
+    /** Campaigns whose spend is unknown because an exchange rate is missing. */
+    readonly campaignsMissingFx: number;
+    /** Some orders lack product costs: order profit (and so UTM profit) is overstated. */
+    readonly revenueMissingCogsShare: string | null;
+  };
+  readonly campaigns: readonly {
+    readonly platform: string;
+    readonly accountName: string;
+    readonly campaignId: string;
+    readonly campaignName: string;
+    readonly source: "api" | "manual";
+    /** False for account-level spend: UTM figures are not applicable (null). */
+    readonly attributable: boolean;
+    readonly otherTimezone: boolean;
+    readonly clicks: number | null;
+    readonly spend: string | null;
+    readonly platformValue: string | null;
+    readonly platformRoas: string | null;
+    readonly utmOrders: number | null;
+    readonly utmRevenue: string | null;
+    readonly utmOrderProfit: string | null;
+    readonly utmRoas: string | null;
+    readonly utmProfitAfterAds: string | null;
+    readonly platformBelowBreakEven: boolean | null;
+    readonly utmBelowBreakEven: boolean | null;
+  }[];
+  readonly unattributed: readonly {
+    readonly platform: string | null;
+    readonly source: string | null;
+    readonly medium: string | null;
+    readonly campaign: string | null;
+    readonly orders: number;
+    readonly revenue: string;
+    readonly orderProfit: string;
+    readonly reason: "no_utm" | "not_paid_platform" | "no_campaign_data" | "no_matching_campaign" | "ambiguous";
+  }[];
+}
+
 function bucketize(days: readonly DailyComponents[], granularity: Granularity): Map<string, DailyComponents[]> {
   const out = new Map<string, DailyComponents[]>();
   for (const d of days) {
@@ -213,6 +273,70 @@ export class ReportingService {
         ? { start: toMoneyString(b.start), end: toMoneyString(b.end), steps: b.steps.map((x) => ({ key: x.key, label: x.label, effect: toMoneyString(x.effect), description: x.description })) }
         : null,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  async advertising(storeId: string, range: DateRange): Promise<AdsReport | null> {
+    const store = await this.source.getStore(storeId);
+    if (!store) return null;
+    const [days, campaigns, utm] = await Promise.all([
+      this.source.getDailyComponents(storeId, range),
+      this.source.getCampaignSpend(storeId, range),
+      this.source.getUtmPerformance(storeId, range),
+    ]);
+    const totals = sumComponents(days);
+    const mm = computeMetrics(totals, ["roas", "breakEvenRoas", "contributionAfterAds"]);
+    const a = attributeCampaigns(campaigns, utm);
+    const known = a.campaigns.filter((c) => c.spend !== null);
+    const withValue = a.campaigns.filter((c) => c.platformValue !== null);
+    const c = completeness(totals);
+    const sumOf = (list: readonly (Decimal | null)[]) => list.reduce<Decimal>((t, x) => (x ? t.plus(x) : t), dec("0"));
+    const platformValue = sumOf(withValue.map((x) => x.platformValue));
+    const platformSpend = sumOf(withValue.map((x) => x.spend));
+    const knownSpend = sumOf(known.map((x) => x.spend));
+    const utmRevenue = sumOf(a.campaigns.map((x) => x.utmRevenue));
+    // UTM ROAS only over spend that UTMs can be matched to (campaign rows).
+    const attributableSpend = sumOf(known.filter((x) => x.attributable).map((x) => x.spend));
+    return {
+      store,
+      range,
+      totals: {
+        adSpend: toMoneyString(totals.adSpend),
+        revenue: toMoneyString(totals.revenue),
+        blendedRoas: s(mm.roas),
+        breakEvenRoas: s(mm.breakEvenRoas),
+        contributionAfterAds: toMoneyString(mm.contributionAfterAds!),
+        platformValue: withValue.length ? toMoneyString(platformValue) : null,
+        platformRoas: withValue.length ? s(ratio(platformValue, platformSpend)) : null,
+        utmRevenue: toMoneyString(utmRevenue),
+        utmRoas: s(ratio(utmRevenue, attributableSpend)),
+        otherAdSpend: toMoneyString(totals.adSpend.minus(knownSpend)),
+        campaignsMissingFx: a.campaigns.length - known.length,
+        revenueMissingCogsShare: s(c.revenueMissingCogsShare),
+      },
+      campaigns: a.campaigns
+        .map((x) => ({
+          platform: x.platform,
+          accountName: x.accountName,
+          campaignId: x.campaignId,
+          campaignName: x.campaignName,
+          source: x.source,
+          attributable: x.attributable,
+          otherTimezone: x.otherTimezone,
+          clicks: x.clicks,
+          spend: s(x.spend),
+          platformValue: s(x.platformValue),
+          platformRoas: s(x.platformRoas),
+          utmOrders: x.utmOrders,
+          utmRevenue: s(x.utmRevenue),
+          utmOrderProfit: s(x.utmOrderProfit),
+          utmRoas: s(x.utmRoas),
+          utmProfitAfterAds: s(x.utmProfitAfterAds),
+          platformBelowBreakEven: belowBreakEven(x.platformRoas, mm.breakEvenRoas),
+          utmBelowBreakEven: belowBreakEven(x.utmRoas, mm.breakEvenRoas),
+        }))
+        .sort((p, q) => dec(q.spend ?? "0").comparedTo(dec(p.spend ?? "0"))),
+      unattributed: a.unattributed.map((g) => ({ ...g, revenue: toMoneyString(g.revenue), orderProfit: toMoneyString(g.orderProfit) })),
     };
   }
 

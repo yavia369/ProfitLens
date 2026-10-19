@@ -173,6 +173,11 @@ describe("Google Ads connection, mapping and spend sync (fake Google, real Postg
     expect(await source.getAdSpendByChannel(storeId, { start: "2026-10-15", end: "2026-10-19" })).toEqual([
       { channel: "google_ads", label: "Google Ads", source: "api", spend: "23.500000", platformConversionValue: "89.990000", platformRoas: "3.829362" },
     ]);
+    // Per campaign, with names from the synced campaigns; PMax had no spend left in the range.
+    const campaigns = await source.getCampaignSpend(storeId, { start: "2026-10-15", end: "2026-10-19" });
+    expect(campaigns).toEqual([
+      expect.objectContaining({ platform: "google_ads", campaignId: "11", campaignName: "Brand", source: "api", attributable: true, spend: "23.500000", platformValue: "89.990000", otherTimezone: false }),
+    ]);
   });
 
   it("records sync failures on the account and job; an invalid key marks the connection for re-authorisation", async () => {

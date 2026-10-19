@@ -91,6 +91,12 @@ test.describe.serial("auth and dashboard", () => {
     await expect(page.getByRole("cell", { name: "100%" }).first()).toBeVisible();
     await shot(page, "customers");
 
+    await page.goto("/advertising?store=demo&preset=last_30_days");
+    await expect(page.getByRole("heading", { name: "Advertising" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: /Shopping - All products/ })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "No campaign with this name or id" }).first()).toBeVisible();
+    await shot(page, "advertising");
+
     await page.goto("/settings/policy");
     await expect(page.getByText("Taxes collected are a liability, never revenue.")).toBeVisible();
     await page.goto("/costs/products");

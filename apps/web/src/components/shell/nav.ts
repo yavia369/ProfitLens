@@ -37,7 +37,7 @@ export const NAV: readonly { readonly title: string; readonly items: readonly Na
       { href: "/orders", label: "Orders", icon: ShoppingBag, report: true },
       { href: "/products", label: "Products", icon: Boxes, report: true },
       { href: "/pnl", label: "Profit & loss", icon: FileSpreadsheet, report: true },
-      { href: "/advertising", label: "Advertising", icon: Megaphone, report: true, plannedPhase: 7 },
+      { href: "/advertising", label: "Advertising", icon: Megaphone, report: true },
       { href: "/customers", label: "Customers", icon: Users, report: true },
     ],
   },

@@ -414,10 +414,18 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     expect(customers.cohorts.map((c) => [c.month, c.customers])).toEqual([["2026-10", 1]]);
     expect(customers.toDate.revenueMissingCogsShare).not.toBeNull(); // SOCK has no cost
 
+    // UTM groups hold all event-dated revenue; the order profit matches the stored order result.
+    const utm = await source.getUtmPerformance(conn.storeId, range);
+    expect(sum(utm.map((u) => dec(u.revenue))).toFixed(2)).toBe(money(p!.revenue));
+    expect(sum(utm.map((u) => dec(u.orderProfit))).toFixed(2)).toBe(money(p!.profit));
+    expect(utm.reduce((n, u) => n + u.orders, 0)).toBe(1);
+
     // Another organization sees nothing and cannot read the store.
     const other = await seedOrg("other");
     const foreign = new DbReportingDataSource(db, other.organizationId);
     await expect(foreign.getCustomerActivity(conn.storeId, range.end)).rejects.toThrow();
+    await expect(foreign.getUtmPerformance(conn.storeId, range)).rejects.toThrow();
+    await expect(foreign.getCampaignSpend(conn.storeId, range)).rejects.toThrow();
     expect(await foreign.listStores()).toEqual([]);
     await expect(foreign.getDailyComponents(conn.storeId, range)).rejects.toThrow();
     await expect(foreign.listOrders(conn.storeId, { range })).rejects.toThrow();

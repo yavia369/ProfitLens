@@ -349,3 +349,20 @@ export function demoAdSpend(date: LocalDate, revenue: Decimal): { google: Decima
   const googleValue = roundToMinor(google.times(factor(2.6 + rand() * 1.4)), DEMO_STORE.currency);
   return { google, googleValue, meta };
 }
+
+/**
+ * Last-visit UTM parameters of a demo order (synthetic, from its own stream keyed by order id). Mirrors what real
+ * stores see: tagged Google campaigns by name or by {campaignid}, Meta traffic, email, an ended campaign, and
+ * many orders without UTMs.
+ */
+export function demoUtm(orderId: string): { source: string | null; medium: string | null; campaign: string | null } {
+  const r = prng(hashString(`${DEMO_STORE.id}:utm:${orderId}`))();
+  if (r < 0.08) return { source: "google", medium: "cpc", campaign: "Search - Brand" };
+  if (r < 0.2) return { source: "google", medium: "cpc", campaign: "shopping - all products" };
+  if (r < 0.27) return { source: "google", medium: "cpc", campaign: "20431003" };
+  if (r < 0.29) return { source: "google", medium: "cpc", campaign: "Winter clearance" };
+  if (r < 0.39) return { source: "facebook", medium: "paid_social", campaign: "Prospecting - Broad" };
+  if (r < 0.43) return { source: "instagram", medium: "paid_social", campaign: "Retargeting - 30d" };
+  if (r < 0.5) return { source: "newsletter", medium: "email", campaign: "Weekly edit" };
+  return { source: null, medium: null, campaign: null };
+}
