@@ -167,7 +167,8 @@ function CohortTable({ report, metric, onMetric, currency }: { report: CustomerR
         {report.cohorts.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">No customers first ordered in these months.</p>
         ) : (
-          <div className="overflow-x-auto">
+          // Focusable so keyboard users can scroll the wide cohort grid (WCAG 2.1.1).
+          <div className="overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-ring" tabIndex={0} role="region" aria-label="Cohort table (scrolls sideways)">
             <table className="w-full border-separate border-spacing-0.5 text-sm">
               <caption className="sr-only">{def.label} by cohort and months since first order</caption>
               <thead>

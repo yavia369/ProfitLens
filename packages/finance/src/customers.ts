@@ -1,5 +1,5 @@
 import type { DateRange, LocalDate } from "./dates";
-import { Decimal, dec, ratio, ZERO, type MoneyString } from "./money";
+import { Decimal, moneyPart, MoneySum, ratio, type MoneyString } from "./money";
 
 /**
  * Customer activity on one store-local day: the customer's orders placed that day and the event-dated money
@@ -94,61 +94,66 @@ export function customerAnalytics(rows: readonly CustomerActivityRow[], range: D
   const lastMonth = monthIndex(monthOf(range.end));
   const firstCohort = lastMonth - cohortMonths + 1;
 
+  // Sums use MoneySum (exact integer micro-units): a store with 100k orders has ~100k activity rows.
   interface Acc {
     first: LocalDate;
     orders: number;
-    revenue: Decimal;
-    cogs: Decimal;
-    missing: Decimal;
+    revenue: MoneySum;
+    cogs: MoneySum;
+    missing: MoneySum;
     activeInRange: boolean;
-    revenueInRange: Decimal;
+    revenueInRange: MoneySum;
     ordersInRange: number;
-    months: Map<number, { orders: number; revenue: Decimal; cogs: Decimal }>;
+    months: Map<number, { orders: number; revenue: MoneySum; cogs: MoneySum }>;
   }
   const customers = new Map<string, Acc>();
   let guestOrders = 0;
-  let revenueGuests = ZERO;
+  const revenueGuests = new MoneySum();
 
   for (const r of rows) {
     if (r.date > range.end) continue;
     if (r.customerId === null || r.firstOrderDate === null) {
       if (inRange(r.date)) {
         guestOrders += r.ordersPlaced;
-        revenueGuests = revenueGuests.plus(dec(r.revenue));
+        revenueGuests.add(r.revenue);
       }
       continue;
     }
     let c = customers.get(r.customerId);
     if (!c) {
-      c = { first: r.firstOrderDate, orders: 0, revenue: ZERO, cogs: ZERO, missing: ZERO, activeInRange: false, revenueInRange: ZERO, ordersInRange: 0, months: new Map() };
+      c = { first: r.firstOrderDate, orders: 0, revenue: new MoneySum(), cogs: new MoneySum(), missing: new MoneySum(), activeInRange: false, revenueInRange: new MoneySum(), ordersInRange: 0, months: new Map() };
       customers.set(r.customerId, c);
     }
-    const revenue = dec(r.revenue);
-    const cogs = dec(r.cogs);
+    const revenue = moneyPart(r.revenue);
+    const cogs = moneyPart(r.cogs);
     c.orders += r.ordersPlaced;
-    c.revenue = c.revenue.plus(revenue);
-    c.cogs = c.cogs.plus(cogs);
-    c.missing = c.missing.plus(dec(r.revenueMissingCogs));
+    c.revenue.add(revenue);
+    c.cogs.add(cogs);
+    c.missing.add(r.revenueMissingCogs);
     if (inRange(r.date)) {
-      c.revenueInRange = c.revenueInRange.plus(revenue);
+      c.revenueInRange.add(revenue);
       c.ordersInRange += r.ordersPlaced;
       if (r.ordersPlaced > 0) c.activeInRange = true;
     }
     const mi = monthIndex(monthOf(r.date));
-    const mo = c.months.get(mi) ?? { orders: 0, revenue: ZERO, cogs: ZERO };
-    c.months.set(mi, { orders: mo.orders + r.ordersPlaced, revenue: mo.revenue.plus(revenue), cogs: mo.cogs.plus(cogs) });
+    if (mi < firstCohort) continue; // months before the cohort window are never read
+    let mo = c.months.get(mi);
+    if (!mo) c.months.set(mi, (mo = { orders: 0, revenue: new MoneySum(), cogs: new MoneySum() }));
+    mo.orders += r.ordersPlaced;
+    mo.revenue.add(revenue);
+    mo.cogs.add(cogs);
   }
 
   let active = 0;
   let newCustomers = 0;
   let orders = 0;
-  let revenueNew = ZERO;
-  let revenueReturning = ZERO;
+  const revenueNew = new MoneySum();
+  const revenueReturning = new MoneySum();
   let repeat = 0;
   let ordersToDate = 0;
-  let revenueToDate = ZERO;
-  let cogsToDate = ZERO;
-  let missingToDate = ZERO;
+  const revenueToDate = new MoneySum();
+  const cogsToDate = new MoneySum();
+  const missingToDate = new MoneySum();
   const cohortMembers = new Map<number, Acc[]>();
 
   for (const c of customers.values()) {
@@ -159,13 +164,12 @@ export function customerAnalytics(rows: readonly CustomerActivityRow[], range: D
     }
     orders += c.ordersInRange;
     // Revenue in the range is "new" when it comes from a customer whose first order is in the range.
-    if (isNew) revenueNew = revenueNew.plus(c.revenueInRange);
-    else revenueReturning = revenueReturning.plus(c.revenueInRange);
+    (isNew ? revenueNew : revenueReturning).add(c.revenueInRange);
     if (c.orders >= 2) repeat++;
     ordersToDate += c.orders;
-    revenueToDate = revenueToDate.plus(c.revenue);
-    cogsToDate = cogsToDate.plus(c.cogs);
-    missingToDate = missingToDate.plus(c.missing);
+    revenueToDate.add(c.revenue);
+    cogsToDate.add(c.cogs);
+    missingToDate.add(c.missing);
     const cm = monthIndex(monthOf(c.first));
     if (cm >= firstCohort && cm <= lastMonth) {
       const list = cohortMembers.get(cm);
@@ -182,26 +186,27 @@ export function customerAnalytics(rows: readonly CustomerActivityRow[], range: D
     if (members.length === 0) continue;
     const size = new Decimal(members.length);
     const cells: CohortCell[] = [];
-    let cumRevenue = ZERO;
-    let cumCogs = ZERO;
+    const cumRevenue = new MoneySum();
+    const cumCogs = new MoneySum();
     for (let mi = cm; mi <= lastMonth; mi++) {
       let activeCustomers = 0;
       for (const c of members) {
         const mo = c.months.get(mi);
         if (!mo) continue;
-        cumRevenue = cumRevenue.plus(mo.revenue);
-        cumCogs = cumCogs.plus(mo.cogs);
+        cumRevenue.add(mo.revenue);
+        cumCogs.add(mo.cogs);
         if (mo.orders > 0) activeCustomers++;
       }
+      const revenue = cumRevenue.value();
       cells.push({
         offset: mi - cm,
         activeCustomers,
-        cumulativeRevenuePerCustomer: cumRevenue.div(size),
-        cumulativeGrossProfitPerCustomer: cumRevenue.minus(cumCogs).div(size),
+        cumulativeRevenuePerCustomer: revenue.div(size),
+        cumulativeGrossProfitPerCustomer: revenue.minus(cumCogs.value()).div(size),
         partial: mi === lastMonth && endPartial,
       });
     }
-    cohorts.push({ month: monthFromIndex(cm), customers: members.length, cells, revenueMissingCogs: members.reduce((s, c) => s.plus(c.missing), ZERO) });
+    cohorts.push({ month: monthFromIndex(cm), customers: members.length, cells, revenueMissingCogs: members.reduce((sum, c) => sum.add(c.missing), new MoneySum()).value() });
   }
 
   return {
@@ -212,9 +217,9 @@ export function customerAnalytics(rows: readonly CustomerActivityRow[], range: D
       returningRate: ratio(new Decimal(active - newCustomers), new Decimal(active)),
       orders,
       ordersPerCustomer: ratio(new Decimal(orders), new Decimal(active)),
-      revenueNew,
-      revenueReturning,
-      revenueGuests,
+      revenueNew: revenueNew.value(),
+      revenueReturning: revenueReturning.value(),
+      revenueGuests: revenueGuests.value(),
       guestOrders,
     },
     toDate: {
@@ -222,10 +227,10 @@ export function customerAnalytics(rows: readonly CustomerActivityRow[], range: D
       repeatCustomers: repeat,
       repeatRate: ratio(new Decimal(repeat), n),
       ordersPerCustomer: ratio(new Decimal(ordersToDate), n),
-      revenuePerCustomer: ratio(revenueToDate, n),
-      grossProfitPerCustomer: ratio(revenueToDate.minus(cogsToDate), n),
-      revenueMissingCogs: missingToDate,
-      revenue: revenueToDate,
+      revenuePerCustomer: ratio(revenueToDate.value(), n),
+      grossProfitPerCustomer: ratio(revenueToDate.value().minus(cogsToDate.value()), n),
+      revenueMissingCogs: missingToDate.value(),
+      revenue: revenueToDate.value(),
     },
     cohorts,
   };

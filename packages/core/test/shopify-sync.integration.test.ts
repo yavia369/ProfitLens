@@ -408,6 +408,10 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     const orders = await source.listOrders(conn.storeId, { range, search: "5001" });
     expect(orders.total).toBe(1);
     expect(orders.rows[0]).toMatchObject({ name: "#5001", financialStatus: "partially_refunded", cogs: "31.200000", isComplete: false });
+    // Search also finds orders by SKU (case-insensitive) and treats LIKE wildcards literally.
+    expect((await source.listOrders(conn.storeId, { range, search: "snk-8" })).total).toBe(1);
+    expect((await source.listOrders(conn.storeId, { range, search: "%" })).total).toBe(0);
+    expect((await source.listOrders(conn.storeId, { range, search: "no-such-sku" })).total).toBe(0);
     const detail = await source.getOrder(conn.storeId, orders.rows[0]!.id);
     expect(detail!.breakdown.map((b) => b.key)).toEqual(expect.arrayContaining(["grossSales", "cogs", "shippingCost", "returns", "cogsReversal", "chargebackLoss"]));
     expect(detail!.breakdown.find((b) => b.key === "cogsReversal")).toMatchObject({ amount: "31.200000", date: "2026-10-08" });

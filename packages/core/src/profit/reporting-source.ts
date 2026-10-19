@@ -86,15 +86,15 @@ export class DbReportingDataSource implements ReportingDataSource {
     await this.store(storeId);
     const [res, [conn]] = await Promise.all([
       // order_daily_result only holds orders included by the policy; guest orders group under a null customer.
+      // One row per order and day, not grouped: customerAnalytics sums repeated customer-days, and grouping here
+      // cost more than it saved (orders rarely share a customer and day; 100k-order benchmark, docs/TESTING.md).
       this.db.execute(sql`
         select o.customer_id, c.first_order_local_date::text as first_order_date, r.local_date::text as date,
-          sum(r.orders_count)::int as orders, sum(r.revenue)::text as revenue, sum(r.cogs)::text as cogs,
-          sum(r.revenue_missing_cogs)::text as missing
+          r.orders_count as orders, r.revenue::text as revenue, r.cogs::text as cogs, r.revenue_missing_cogs::text as missing
         from order_daily_result r
         join "order" o on o.id = r.order_id
         left join customer c on c.id = o.customer_id
-        where r.store_id = ${storeId} and r.local_date <= ${end}
-        group by o.customer_id, c.first_order_local_date, r.local_date`),
+        where r.store_id = ${storeId} and r.local_date <= ${end}`),
       this.db
         .select({ historyStart: schema.storeConnection.historyStart, scopes: schema.storeConnection.grantedScopes })
         .from(schema.storeConnection)
@@ -366,7 +366,13 @@ export class DbReportingDataSource implements ReportingDataSource {
     const search = q.search?.trim();
     const like = search ? `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
     const where = sql`o.store_id = ${storeId} and p.included and o.processed_local_date between ${q.range.start}::date and ${q.range.end}::date
-      ${like ? sql`and (o.name ilike ${like} or exists (select 1 from order_line_item li where li.order_id = o.id and (li.title ilike ${like} or li.sku ilike ${like})))` : sql``}`;
+      ${
+        like
+          ? // Order number, product title or SKU. Written as IN (… UNION …) so the trigram indexes (migration 0008) are used.
+            sql`and o.id in (select id from "order" where store_id = ${storeId} and name ilike ${like}
+                             union select order_id from order_line_item where store_id = ${storeId} and (title ilike ${like} or sku ilike ${like}))`
+          : sql``
+      }`;
     const dir = q.direction === "asc" ? sql`asc` : sql`desc`;
     const order =
       q.sort === "revenue" ? sql`p.revenue ${dir}` : q.sort === "profit" ? sql`p.profit ${dir}` : q.sort === "margin" ? sql`(p.profit / nullif(p.revenue, 0)) ${dir} nulls last` : sql`o.processed_at ${dir}`;

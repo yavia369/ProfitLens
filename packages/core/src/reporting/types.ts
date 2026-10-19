@@ -127,7 +127,8 @@ export interface ReportingDataSource {
   /** Per-day sales of one product (all its variants) in the range; days without sales are omitted. */
   getProductDaily(storeId: string, productId: string, range: DateRange): Promise<ProductDailyRow[]>;
   /**
-   * Per customer and store-local day, from the start of stored history through `end` (orders excluded by policy
+   * Per customer and store-local day (a customer-day may come as several rows, which are summed), from the start of
+   * stored history through `end` (orders excluded by policy
    * are left out). When the history is incomplete (`historyComplete` false), customers who first ordered before
    * `historyStart` look new.
    */

@@ -12,6 +12,7 @@ import {
   eachDay,
   METRIC_KEYS,
   METRICS,
+  MoneySum,
   ratio,
   relativeChange,
   resolvePreset,
@@ -23,6 +24,18 @@ import {
 } from "../src/index";
 
 describe("money", () => {
+  it("MoneySum is exact: matches Decimal on mixed signs and scales, falls back for more than 6 decimals", () => {
+    const values = ["0.1", "0.2", "-0.3", "123456789012.345678", "-0.000001", "7", "-12.5", "0.000000", "99999999999999.999999"];
+    for (let i = 0; i < 200; i++) values.push(`${i % 3 ? "" : "-"}${(i * 7919) % 100000}.${String((i * 104729) % 1000000).padStart(6, "0")}`);
+    const s = new MoneySum();
+    for (const v of values) s.add(v);
+    expect(s.value().toFixed(6)).toBe(sum(values.map(dec)).toFixed(6));
+    const fine = new MoneySum().add("0.1234567").add("0.0000003"); // 7 decimals: Decimal fallback
+    expect(fine.value().toFixed(7)).toBe("0.1234570");
+    expect(new MoneySum().add(s).add(fine).value().toFixed(7)).toBe(sum([...values.map(dec), dec("0.123457")]).toFixed(7));
+    expect(new MoneySum().add("0").isZero).toBe(true);
+  });
+
   it("adds decimal strings exactly", () => {
     expect(toMoneyString(sum([dec("0.1"), dec("0.2")]), 2)).toBe("0.30");
     expect(toMoneyString(sum(Array.from({ length: 10 }, () => dec("0.1"))), 6)).toBe("1.000000");

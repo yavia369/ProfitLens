@@ -15,7 +15,7 @@
   --popover-foreground: #18181b;
   --muted: #f1f1ee;
   --muted-foreground: #5f5e59;
-  --subtle: #8a8983;
+  --subtle: #6e6d67; /* ≥ 4.5:1 on every light surface (WCAG AA, axe-checked) */
   --border: #e4e4df;
   --input: #d9d9d3;
   --ring: #4338ca;

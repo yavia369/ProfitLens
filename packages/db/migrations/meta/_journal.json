@@ -57,6 +57,13 @@
       "when": 1792407900459,
       "tag": "0007_worker_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792410318460,
+      "tag": "0008_search_trigram_indexes",
+      "breakpoints": true
     }
   ]
 }

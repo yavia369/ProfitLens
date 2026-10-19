@@ -19,6 +19,13 @@ export function AppShell({
   return (
     <StoresProvider stores={stores}>
     <div className="min-h-dvh">
+      {/* First focusable element: lets keyboard users jump past the navigation (WCAG 2.4.1). */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md"
+      >
+        Skip to main content
+      </a>
       <Suspense>
         <Sidebar />
       </Suspense>
@@ -26,7 +33,7 @@ export function AppShell({
         <Suspense>
           <Header stores={stores} user={user} organization={organization} />
         </Suspense>
-        <main className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-8">{children}</main>
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1400px] px-4 py-6 outline-none lg:px-8">{children}</main>
       </div>
     </div>
     </StoresProvider>

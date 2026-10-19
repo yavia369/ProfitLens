@@ -71,7 +71,7 @@ export default async function ProductCostsPage({ searchParams }: { searchParams:
               </form>
               <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
                 <Button asChild variant={missingOnly ? "secondary" : "outline"} size="sm">
-                  <Link href={href({ missing: missingOnly ? null : "1", page: null })} aria-pressed={missingOnly}>
+                  <Link href={href({ missing: missingOnly ? null : "1", page: null })}>
                     {missingOnly ? "Showing missing only" : `Missing only (${formatCount(data?.missingTotal ?? 0)})`}
                   </Link>
                 </Button>

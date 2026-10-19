@@ -72,6 +72,8 @@ export const order = pgTable(
     index("order_store_processed_date_idx").on(t.storeId, t.processedLocalDate),
     index("order_store_updated_idx").on(t.storeId, t.shopifyUpdatedAt),
     index("order_customer_idx").on(t.customerId),
+    // Order search (`ilike '%…%'`); needs the pg_trgm extension (migration 0008).
+    index("order_name_trgm_idx").using("gin", t.name.op("gin_trgm_ops")),
   ],
 );
 
@@ -99,7 +101,13 @@ export const orderLineItem = pgTable(
     isGiftCard: boolean("is_gift_card").notNull().default(false),
     requiresShipping: boolean("requires_shipping").notNull().default(true),
   },
-  (t) => [unique("oli_store_gid_uq").on(t.storeId, t.shopifyGid), index("oli_order_idx").on(t.orderId), index("oli_variant_idx").on(t.variantId)],
+  (t) => [
+    unique("oli_store_gid_uq").on(t.storeId, t.shopifyGid),
+    index("oli_order_idx").on(t.orderId),
+    index("oli_variant_idx").on(t.variantId),
+    index("oli_title_trgm_idx").using("gin", t.title.op("gin_trgm_ops")),
+    index("oli_sku_trgm_idx").using("gin", t.sku.op("gin_trgm_ops")),
+  ],
 );
 
 export const saleActionType = pgEnum("sale_action_type", ["ORDER", "RETURN", "UPDATE", "UNKNOWN"]);
