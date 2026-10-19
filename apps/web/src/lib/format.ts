@@ -80,3 +80,9 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
   if (Math.abs(seconds) < 86400) return rtf.format(-Math.round(seconds / 3600), "hour");
   return rtf.format(-Math.round(seconds / 86400), "day");
 }
+
+/** Decimal string for an input field: drops trailing fractional zeros only ("12.500000" → "12.5", "100" stays). */
+export function plainAmount(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.includes(".") ? value.replace(/0+$/, "").replace(/\.$/, "") : value;
+}

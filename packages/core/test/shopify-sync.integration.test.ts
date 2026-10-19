@@ -5,9 +5,30 @@ import type { FetchLike, RawOrder, RawProduct } from "@profitlens/shopify";
 import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 import { createHmac } from "node:crypto";
 import { connectStoreWithClientCredentials, ConnectionError, dayBoundsUtc, handleShopifyWebhook, ShopifySyncService } from "../src/shopify";
-import { DbReportingDataSource, ProfitService } from "../src/profit";
+import {
+  applyCostImport,
+  applyRecalc,
+  archiveExpense,
+  CostInputError,
+  DbReportingDataSource,
+  exportCostsCsv,
+  gatewaySummary,
+  getPolicy,
+  listExpenses,
+  listVariantCosts,
+  previewCostImport,
+  ProfitService,
+  saveExpense,
+  saveGatewayRule,
+  saveHandlingRule,
+  savePolicy,
+  saveShippingRule,
+  setVariantCost,
+  variantCostHistory,
+} from "../src/profit";
 import { ReportingService } from "../src/reporting/service";
 import { dec, DEFAULT_POLICY, ENGINE_VERSION, sum } from "@profitlens/finance";
 import { pagedOrder } from "../../shopify/test/fixtures/orders";
@@ -389,6 +410,109 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     expect(await foreign.listStores()).toEqual([]);
     await expect(foreign.getDailyComponents(conn.storeId, range)).rejects.toThrow();
     await expect(foreign.listOrders(conn.storeId, { range })).rejects.toThrow();
+  });
+
+  it("cost service: dated product costs split history, recalculate affected orders and are audited", async () => {
+    const { conn, scope, sync } = await setup();
+    await sync.backfill(conn.storeId);
+    const profit = new ProfitService(db);
+    const [socks] = await db.select().from(schema.variant).where(eq(schema.variant.shopifyGid, "gid://shopify/ProductVariant/21"));
+    const [sneaker] = await db.select().from(schema.variant).where(eq(schema.variant.shopifyGid, "gid://shopify/ProductVariant/11"));
+
+    const list = await listVariantCosts(db, scope, conn.storeId, { missingOnly: true });
+    expect(list).toMatchObject({ total: 1, missingTotal: 1, missingSold: 1 });
+    expect(list.rows[0]).toMatchObject({ sku: "SOCK", current: null, unitsOrdered: 2 });
+
+    // Socks cost 4.50 + 0.50 inbound for all history.
+    const r1 = await setVariantCost(db, scope, conn.storeId, { variantIds: [socks!.id], productCost: "4.50", inboundShipping: "0.50", effectiveFrom: "2000-01-01" });
+    expect(await applyRecalc(profit, null, conn.storeId, r1)).toEqual({ mode: "inline", orders: 1 });
+    expect(money((await db.select().from(schema.orderProfit))[0]!.cogs)).toBe("41.20"); // 31.20 + 2 × 5.00
+
+    // Sneaker gets a new cost from 2026-10-04: the Shopify-seeded version is closed, older orders keep 31.20.
+    await setVariantCost(db, scope, conn.storeId, { variantIds: [sneaker!.id], productCost: "35.00", effectiveFrom: "2026-10-04" });
+    const history = await variantCostHistory(db, scope, conn.storeId, sneaker!.id);
+    expect(history.map((h) => [h.effectiveFrom, h.effectiveTo, h.source])).toEqual([["2026-10-04", null, "manual"], ["2000-01-01", "2026-10-04", "shopify_sync"]]);
+    // A cost set on an earlier date stops at the next version instead of overwriting it.
+    await setVariantCost(db, scope, conn.storeId, { variantIds: [sneaker!.id], productCost: "30.00", effectiveFrom: "2026-09-01" });
+    expect((await variantCostHistory(db, scope, conn.storeId, sneaker!.id)).map((h) => [h.effectiveFrom, h.effectiveTo])).toEqual([["2026-10-04", null], ["2026-09-01", "2026-10-04"], ["2000-01-01", "2026-09-01"]]);
+    expect((await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "cost_version.set"))).length).toBe(3);
+
+    // One handling mode: per-unit handling in product costs blocks handling rules.
+    await setVariantCost(db, scope, conn.storeId, { variantIds: [socks!.id], productCost: "4.50", handling: "0.20", effectiveFrom: "2026-01-01" });
+    await expect(saveHandlingRule(db, scope, conn.storeId, { mode: "per_order", amount: "1.00", effectiveFrom: "2026-01-01" })).rejects.toBeInstanceOf(CostInputError);
+
+    // Viewers cannot change costs; other organizations cannot see the store.
+    await expect(setVariantCost(db, { ...scope, role: "viewer" }, conn.storeId, { variantIds: [socks!.id], productCost: "1", effectiveFrom: "2026-01-01" })).rejects.toThrow(/permission/);
+    const other = await seedOrg("other");
+    await expect(listVariantCosts(db, other, conn.storeId, {})).rejects.toThrow();
+    await expect(setVariantCost(db, scope, conn.storeId, { variantIds: [socks!.id], productCost: "-1", effectiveFrom: "2026-01-01" })).rejects.toThrow();
+  });
+
+  it("cost service: CSV import previews a diff, skips bad rows and applies by SKU; export round-trips", async () => {
+    const { conn, scope, sync } = await setup();
+    await sync.backfill(conn.storeId);
+    const csv = ["SKU,Product Cost,Effective From", "SOCK,4.50,", "snk-8,$33.00,2026-10-01", "NOPE,1.00,", "SOCK,abc,2026-02-01", "SOCK,,"].join("\n");
+    const preview = await previewCostImport(db, scope, conn.storeId, csv);
+    expect(preview.matched.map((m) => [m.label, m.productCost, m.effectiveFrom, m.previous])).toEqual([
+      ["Sneaker — Default", "4.50", "2000-01-01", null], // the fixture's socks are a variant of the same product
+      ["Sneaker — Black / 8", "33.00", "2026-10-01", "31.200000"],
+    ]);
+    expect(preview.errors.map((e) => e.line)).toEqual([4, 5]);
+    expect(preview.blank).toBe(1); // rows without a cost are ignored, not errors
+    const applied = await applyCostImport(db, scope, conn.storeId, csv);
+    expect(applied).toMatchObject({ applied: 2, skipped: 2 });
+    await applyRecalc(new ProfitService(db), null, conn.storeId, applied);
+    const [p] = await db.select().from(schema.orderProfit);
+    expect(money(p!.cogs)).toBe("42.00"); // order on 2026-10-03: 2 × 33.00 − 1 × 33.00 + 2 × 4.50
+    const exported = await exportCostsCsv(db, scope, conn.storeId);
+    expect(exported.split("\n")[0]).toBe("variant_id,sku,product,variant,price,product_cost,inbound_shipping,handling,effective_from");
+    expect(exported).toContain(",SOCK,");
+    // An export re-imports as is (here: no changes, every row matches its variant).
+    const reimport = await previewCostImport(db, scope, conn.storeId, exported);
+    expect(reimport.errors).toEqual([]);
+    expect(reimport.matched).toHaveLength(2);
+    await expect(previewCostImport(db, scope, conn.storeId, "name,price\nx,1")).rejects.toBeInstanceOf(CostInputError);
+  });
+
+  it("cost service: shipping, fee and policy changes recalculate; policy versions are kept", async () => {
+    const { conn, scope, sync } = await setup();
+    await sync.backfill(conn.storeId);
+    const profit = new ProfitService(db);
+    const ship = await saveShippingRule(db, scope, conn.storeId, null, { name: "AU", params: { type: "first_plus_additional", first: "8.00", additional: "1.00" }, countryCodes: ["au"], effectiveFrom: "2026-01-01" });
+    expect(ship.affectedOrderIds).toHaveLength(1);
+    await applyRecalc(profit, null, conn.storeId, ship);
+    const [p1] = await db.select().from(schema.orderProfit);
+    expect(money(p1!.shippingCost)).toBe("11.00"); // 4 shippable units: 8 + 3 × 1
+    expect(p1!.missingComponents).not.toContain("shipping");
+    await expect(saveShippingRule(db, scope, conn.storeId, null, { name: "bad", params: { type: "per_order", amount: "1" }, effectiveFrom: "2026-02-01", effectiveTo: "2026-01-01" })).rejects.toThrow();
+
+    expect(await gatewaySummary(db, scope, conn.storeId)).toEqual([expect.objectContaining({ gateway: "shopify_payments", payments: 1, with_actual_fees: 1 })]);
+    await saveGatewayRule(db, scope, conn.storeId, { gateway: "paypal", percentRate: "2.6", fixedFee: "0.30", thirdPartyFeeApplies: true, effectiveFrom: "2026-01-01" });
+    await expect(saveGatewayRule(db, scope, conn.storeId, { gateway: "PayPal", percentRate: "3", fixedFee: "0", thirdPartyFeeApplies: true, effectiveFrom: "2026-06-01" })).rejects.toBeInstanceOf(CostInputError);
+    // Invalid input is a validation error with a readable message, never a crash.
+    for (const [percentRate, message] of [["abc", "Enter a percentage like 2.9."], ["101", "A percentage cannot exceed 100."]]) {
+      const err = await saveGatewayRule(db, scope, conn.storeId, { gateway: "stripe", percentRate: percentRate!, fixedFee: "0", thirdPartyFeeApplies: false, effectiveFrom: "2026-01-01" }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ZodError);
+      expect((err as ZodError).issues[0]!.message).toBe(message);
+    }
+
+    const before = await getPolicy(db, scope, conn.storeId);
+    expect(before.version).toBe(1);
+    await expect(savePolicy(db, { ...scope, role: "editor" }, conn.storeId, { ...before.policy, refundDating: "order" })).rejects.toThrow(/permission/);
+    const saved = await savePolicy(db, scope, conn.storeId, { ...before.policy, refundDating: "order" });
+    expect(saved).toMatchObject({ version: 2, wholeStore: true });
+    expect(await applyRecalc(profit, null, conn.storeId, saved)).toMatchObject({ mode: "inline", orders: 1 });
+    expect((await savePolicy(db, scope, conn.storeId, { ...before.policy, refundDating: "order" })).version).toBe(2); // unchanged → no new version
+    expect((await getPolicy(db, scope, conn.storeId)).history.map((h) => h.version)).toEqual([2, 1]);
+    await expect(savePolicy(db, scope, conn.storeId, { ...before.policy, refundDating: "never" })).rejects.toThrow();
+
+    // Expenses: saved without recalculation (applied on read).
+    expect(await saveExpense(db, scope, conn.storeId, null, { name: "Shopify plan", type: "recurring", frequency: "monthly", amount: "39", currency: "aud", startDate: "2026-10-01" })).toEqual({ affectedOrderIds: [] });
+    await expect(saveExpense(db, scope, conn.storeId, null, { name: "x", type: "recurring", amount: "39", currency: "AUD", startDate: "2026-10-01" })).rejects.toThrow();
+    const [e] = await listExpenses(db, scope, conn.storeId);
+    expect(e!.e).toMatchObject({ currency: "AUD", frequency: "monthly", percent: null });
+    await archiveExpense(db, scope, conn.storeId, e!.e.id);
+    expect(await listExpenses(db, scope, conn.storeId)).toHaveLength(0);
   });
 
   it("an incremental sync recalculates the orders it changed", async () => {

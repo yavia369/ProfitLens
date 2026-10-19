@@ -75,6 +75,11 @@ export class ProfitService {
     return stats;
   }
 
+  async orderCount(storeId: string): Promise<number> {
+    const [r] = await this.db.select({ n: sql<number>`count(*)::int` }).from(schema.order).where(eq(schema.order.storeId, storeId));
+    return r?.n ?? 0;
+  }
+
   /** Orders that contain any of the variants with an order date on/after `fromDate` (cost version changes). */
   async ordersWithVariants(storeId: string, variantIds: readonly string[], fromDate: string): Promise<string[]> {
     if (variantIds.length === 0) return [];

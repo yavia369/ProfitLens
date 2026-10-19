@@ -86,7 +86,7 @@ test.describe.serial("auth and dashboard", () => {
     await page.goto("/settings/policy");
     await expect(page.getByText("Taxes collected are a liability, never revenue.")).toBeVisible();
     await page.goto("/costs/products");
-    await expect(page.getByText("Planned for phase 5")).toBeVisible();
+    await expect(page.getByText("No connected store yet")).toBeVisible();
 
     await page.goto("/settings/sync");
     await expect(page.getByText("No stores connected")).toBeVisible();

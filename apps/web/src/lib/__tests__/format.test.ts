@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toCsv } from "../csv";
-import { formatChange, formatMoney, formatPercent, formatRatio, signOf } from "../format";
+import { formatChange, formatMoney, formatPercent, formatRatio, plainAmount, signOf } from "../format";
 
 describe("presentation formatting", () => {
   it("formats decimal strings exactly, without float artefacts", () => {
@@ -34,6 +34,16 @@ describe("presentation formatting", () => {
     expect(signOf("0.000000")).toBe(0);
     expect(signOf("12")).toBe(1);
     expect(signOf(null)).toBeNull();
+  });
+});
+
+describe("plainAmount (form values)", () => {
+  it("drops only trailing fractional zeros", () => {
+    expect(plainAmount("12.500000")).toBe("12.5");
+    expect(plainAmount("8.000000")).toBe("8");
+    expect(plainAmount("100")).toBe("100");
+    expect(plainAmount("0.000000")).toBe("0");
+    expect(plainAmount(null)).toBe("");
   });
 });
 

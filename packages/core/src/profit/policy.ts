@@ -3,18 +3,18 @@ import { schema, type Database } from "@profitlens/db";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-const moneyString = z.string().regex(/^\d+(\.\d{1,6})?$/, "a non-negative amount like 12.50");
+const moneyString = z.string().regex(/^\d+(\.\d{1,6})?$/, "Enter the default chargeback fee as an amount like 12.50.");
 
 /** Validates a stored or submitted policy (FINANCIAL_MODEL §7). */
 export const financialPolicySchema = z.object({
-  includedFinancialStatuses: z.array(z.enum(["PENDING", "AUTHORIZED", "PARTIALLY_PAID", "PAID", "PARTIALLY_REFUNDED", "REFUNDED", "VOIDED", "EXPIRED"])).min(1),
+  includedFinancialStatuses: z.array(z.enum(["PENDING", "AUTHORIZED", "PARTIALLY_PAID", "PAID", "PARTIALLY_REFUNDED", "REFUNDED", "VOIDED", "EXPIRED"])).min(1, "Include at least one financial status."),
   tipsAsRevenue: z.boolean(),
   dutiesAndFeesAsRevenue: z.boolean(),
   refundDating: z.enum(["event", "order"]),
   chargebackDating: z.enum(["event", "order"]),
   cogsFallback: z.discriminatedUnion("mode", [
     z.object({ mode: z.literal("none") }),
-    z.object({ mode: z.literal("percent_of_price"), percent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "a percentage between 0 and 99.99") }),
+    z.object({ mode: z.literal("percent_of_price"), percent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Enter the estimated cost as a percentage between 0 and 99.99.") }),
   ]),
   cogsReversalRestockTypes: z.array(z.enum(["RETURN", "CANCEL", "NO_RESTOCK", "LEGACY_RESTOCK"])),
   zeroShippingIfUnfulfilledCancel: z.boolean(),
