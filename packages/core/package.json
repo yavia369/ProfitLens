@@ -9,7 +9,8 @@
     "./shopify": "./src/shopify/index.ts",
     "./security": "./src/security/crypto.ts",
     "./jobs": "./src/jobs/index.ts",
-    "./profit": "./src/profit/index.ts"
+    "./profit": "./src/profit/index.ts",
+    "./ads": "./src/ads/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -21,7 +22,8 @@
     "@profitlens/finance": "workspace:*",
     "@profitlens/shopify": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@profitlens/google-ads": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

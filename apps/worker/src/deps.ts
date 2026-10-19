@@ -5,7 +5,7 @@ import pino from "pino";
 
 export const log = pino({
   level: process.env.LOG_LEVEL ?? "info",
-  redact: { paths: ["*.token", "*.accessToken", "*.clientSecret", "*.secret", "headers.authorization", "headers.cookie"], censor: "[redacted]" },
+  redact: { paths: ["*.token", "*.accessToken", "*.clientSecret", "*.secret", "*.keyJson", "*.private_key", "*.privateKey", "headers.authorization", "headers.cookie"], censor: "[redacted]" },
 });
 
 export function buildDeps(): ShopifyDeps & { databaseUrl: string } {

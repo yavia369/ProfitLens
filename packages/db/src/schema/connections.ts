@@ -88,6 +88,12 @@ export const adConnection = pgTable(
     /** Provider user identity (e.g. Google account subject) used to dedupe reconnects. */
     externalUserId: text("external_user_id"),
     displayName: text("display_name"),
+    /** service_account (owner's own accounts, D-041) or oauth (merchant sign-in, later). */
+    authType: text("auth_type").notNull().default("oauth"),
+    /** Service account key JSON, AES-256-GCM encrypted (auth_type = service_account). */
+    credentialsEnc: text("credentials_enc"),
+    /** Manager account used as login-customer-id for all calls, when access goes through one. */
+    loginCustomerId: text("login_customer_id"),
     refreshTokenEnc: text("refresh_token_enc"),
     accessTokenEnc: text("access_token_enc"),
     accessTokenExpiresAt: tsz("access_token_expires_at"),

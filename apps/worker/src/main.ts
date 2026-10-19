@@ -1,4 +1,5 @@
-import { QUEUES, type OrderJob, type StoreJob } from "@profitlens/core/jobs";
+import { AdsSyncService } from "@profitlens/core/ads";
+import { QUEUES, type AdsJob, type OrderJob, type StoreJob } from "@profitlens/core/jobs";
 import { ProfitService } from "@profitlens/core/profit";
 import { ShopifySyncService } from "@profitlens/core/shopify";
 import { schema } from "@profitlens/db";
@@ -8,12 +9,13 @@ import { buildDeps, log } from "./deps";
 
 /**
  * Background worker: Shopify backfill, incremental sync (every 15 min), webhook-triggered order refresh,
- * profit recalculation and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
+ * profit recalculation, Google Ads spend (every 6 hours) and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
  */
 async function main() {
   const deps = buildDeps();
   const sync = new ShopifySyncService(deps);
   const profit = new ProfitService(deps.db);
+  const ads = new AdsSyncService(deps);
   const boss = new PgBoss({ connectionString: deps.databaseUrl, schema: "pgboss" });
   boss.on("error", (error) => log.error({ err: error }, "pg-boss error"));
   await boss.start();
@@ -43,6 +45,16 @@ async function main() {
   await run<StoreJob>(QUEUES.reconcile, (d) => sync.reconcileOrderCounts(d.storeId));
   await run<StoreJob>(QUEUES.recalcStore, (d) => profit.recalcStore(d.storeId));
 
+  await boss.work<AdsJob>(QUEUES.adsSync, { batchSize: 1 }, async (jobs) => {
+    for (const job of jobs) {
+      log.info({ queue: QUEUES.adsSync, jobId: job.id, accountId: job.data.accountId }, "job started");
+      const result = await ads.syncAccount(job.data.accountId, { full: job.data.full ?? false });
+      log.info({ queue: QUEUES.adsSync, jobId: job.id, result }, "job finished");
+    }
+  });
+  await boss.work(QUEUES.adsSyncAll, async () => {
+    for (const accountId of await ads.syncableAccounts()) await boss.send(QUEUES.adsSync, { accountId } satisfies AdsJob, { singletonKey: accountId, retryLimit: 5, retryBackoff: true });
+  });
   await boss.work(QUEUES.incrementalAll, async () => {
     for (const storeId of await activeStores()) await boss.send(QUEUES.incremental, { storeId }, { singletonKey: storeId, retryLimit: 5, retryBackoff: true });
   });
@@ -51,6 +63,8 @@ async function main() {
   });
   await boss.schedule(QUEUES.incrementalAll, "*/15 * * * *");
   await boss.schedule(QUEUES.reconcileAll, "15 2 * * *", null, { tz: "UTC" });
+  // Ad spend: every 6 hours (each run re-reads the last 3 days to pick up restatements).
+  await boss.schedule(QUEUES.adsSyncAll, "40 */6 * * *", null, { tz: "UTC" });
 
   log.info("worker started");
   const shutdown = async (signal: string) => {

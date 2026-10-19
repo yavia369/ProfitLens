@@ -88,20 +88,26 @@ export class DbReportingDataSource implements ReportingDataSource {
   }
 
   /** Daily ad spend per account in store currency. Campaign rows are used when an account has them, else account rows. */
-  private async adSpendRows(storeId: string, currency: string, range: DateRange) {
+  private async adSpendRows(storeId: string, currency: string, timezone: string, range: DateRange) {
     const rows = await this.db.execute(sql`
       with spend as (
-        select a.id as account_id, a.platform, a.currency, d.date::text as date, d.source, d.level, sum(d.spend) as spend, sum(d.conversion_value) as value
+        select a.id as account_id, a.platform, a.currency, a.timezone, d.date::text as date, d.source, d.level,
+          sum(d.spend) as spend, sum(d.conversion_value) as value
         from ad_spend_daily d join ad_account a on a.id = d.ad_account_id
         where a.store_id = ${storeId} and a.organization_id = ${this.organizationId} and d.date between ${range.start}::date and ${range.end}::date
-        group by 1, 2, 3, 4, 5, 6
+          -- Imported data wins over a plain manual entry for the same platform and day; adjustments add on top.
+          and not (d.source = 'manual' and not d.is_adjustment and exists (
+            select 1 from ad_spend_daily d2 join ad_account a2 on a2.id = d2.ad_account_id
+            where a2.store_id = a.store_id and a2.platform = a.platform and d2.source = 'api' and d2.date = d.date))
+        group by 1, 2, 3, 4, 5, 6, 7
       ),
       pick as (select account_id, bool_or(level = 'campaign') as has_campaigns from spend group by 1)
-      select s.platform, s.currency, s.date, s.source, sum(s.spend)::text as spend, sum(s.value)::text as value
+      select s.platform, s.currency, s.date, s.source, bool_or(s.timezone <> ${timezone}) as other_tz,
+        sum(s.spend)::text as spend, sum(s.value)::text as value
       from spend s join pick p on p.account_id = s.account_id
       where s.level = case when p.has_campaigns then 'campaign'::ad_spend_level else 'account'::ad_spend_level end
       group by 1, 2, 3, 4`);
-    const list = rows.rows as { platform: string; currency: string; date: string; source: "api" | "manual"; spend: string; value: string | null }[];
+    const list = rows.rows as { platform: string; currency: string; date: string; source: "api" | "manual"; other_tz: boolean; spend: string; value: string | null }[];
     const fx = await this.fxFor(currency, list.map((r) => r.currency), range);
     return list.map((r) => {
       const rate = fx(r.currency, r.date);
@@ -139,7 +145,7 @@ export class DbReportingDataSource implements ReportingDataSource {
         .select()
         .from(schema.dailyStoreMetrics)
         .where(and(eq(schema.dailyStoreMetrics.storeId, storeId), between(schema.dailyStoreMetrics.localDate, range.start, range.end))),
-      this.adSpendRows(storeId, store.currency, range),
+      this.adSpendRows(storeId, store.currency, store.timezone, range),
       this.expenses(storeId),
       this.db
         .select({ d: schema.customer.firstOrderLocalDate, n: sql<number>`count(*)::int` })
@@ -212,21 +218,22 @@ export class DbReportingDataSource implements ReportingDataSource {
 
   async getAdSpendByChannel(storeId: string, range: DateRange): Promise<AdChannelSpend[]> {
     const store = await this.store(storeId);
-    const ads = await this.adSpendRows(storeId, store.currency, range);
-    const channels = new Map<string, { label: string; source: "api" | "manual"; spend: Decimal; value: Decimal | null }>();
+    const ads = await this.adSpendRows(storeId, store.currency, store.timezone, range);
+    const channels = new Map<string, { label: string; source: "api" | "manual"; spend: Decimal; value: Decimal | null; otherTz: boolean }>();
     for (const a of ads) {
       if (!a.spendStore) continue;
       const key = a.source === "manual" ? `${a.platform}:manual` : a.platform;
-      const c = channels.get(key) ?? { label: `${PLATFORM_LABEL[a.platform] ?? a.platform}${a.source === "manual" && a.platform !== "manual" ? " (manual entries)" : ""}`, source: a.source, spend: ZERO, value: null };
+      const c = channels.get(key) ?? { label: `${PLATFORM_LABEL[a.platform] ?? a.platform}${a.source === "manual" && a.platform !== "manual" ? " (manual entries)" : ""}`, source: a.source, spend: ZERO, value: null, otherTz: false };
       c.spend = c.spend.plus(a.spendStore);
       if (a.valueStore) c.value = (c.value ?? ZERO).plus(a.valueStore);
+      if (a.other_tz) c.otherTz = true;
       channels.set(key, c);
     }
     // Expenses flagged as ad spend are part of the ad-spend total, so they are listed as a channel too.
     const days = await this.getDailyComponents(storeId, range);
     const adTotal = days.reduce((t, d) => t.plus(dec(d.adSpend)), ZERO);
     const fromChannels = [...channels.values()].reduce((t, c) => t.plus(c.spend), ZERO);
-    if (!adTotal.minus(fromChannels).isZero()) channels.set("expenses", { label: "Expenses recorded as ad spend", source: "manual", spend: adTotal.minus(fromChannels), value: null });
+    if (!adTotal.minus(fromChannels).isZero()) channels.set("expenses", { label: "Expenses recorded as ad spend", source: "manual", spend: adTotal.minus(fromChannels), value: null, otherTz: false });
     return [...channels.entries()].map(([channel, c]) => ({
       channel,
       label: c.label,
@@ -234,6 +241,7 @@ export class DbReportingDataSource implements ReportingDataSource {
       spend: m(c.spend),
       platformConversionValue: c.value ? m(c.value) : null,
       platformRoas: c.value && !c.spend.isZero() ? m(c.value.div(c.spend)) : null,
+      ...(c.otherTz ? { timezoneApproximation: true } : {}),
     }));
   }
 

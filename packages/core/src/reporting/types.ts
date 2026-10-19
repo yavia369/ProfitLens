@@ -21,6 +21,8 @@ export interface AdChannelSpend {
   readonly platformConversionValue: MoneyString | null;
   /** Platform-reported ROAS = conversion value ÷ spend; null when not reported or no spend. */
   readonly platformRoas: string | null;
+  /** The ad account's time zone differs from the store's: its days are mapped date-to-date (FINANCIAL_MODEL §1). */
+  readonly timezoneApproximation?: boolean;
 }
 
 export interface OrderRow {

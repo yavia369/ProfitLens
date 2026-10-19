@@ -29,6 +29,13 @@
       "when": 1792391094273,
       "tag": "0003_profit_results",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792394009127,
+      "tag": "0004_ads_sync",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { bigint, boolean, char, date, index, pgEnum, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
-import { createdAt, id, money, updatedAt } from "./_columns";
+import { createdAt, id, money, tsz, updatedAt } from "./_columns";
 import { adConnection, adPlatform } from "./connections";
 import { organization, store } from "./tenancy";
 
@@ -24,6 +24,13 @@ export const adAccount = pgTable(
     /** The store this account's spend is attributed to (one account → one store in M1). */
     storeId: uuid("store_id").references(() => store.id, { onDelete: "set null" }),
     syncEnabled: boolean("sync_enabled").notNull().default(false),
+    /** Platform account status (e.g. ENABLED, CANCELED); closed accounts are not synced. */
+    accountStatus: text("account_status"),
+    /** Last date (account time zone) whose spend is imported; the daily sync re-reads the 3 days before it. */
+    spendSyncedThrough: date("spend_synced_through", { mode: "string" }),
+    backfillCompletedAt: tsz("backfill_completed_at"),
+    lastSyncedAt: tsz("last_synced_at"),
+    lastError: text("last_error"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -89,6 +96,8 @@ export const adSpendDaily = pgTable(
     /** Platform-reported conversion value — label as "platform-reported" in UI. */
     conversionValue: money("conversion_value"),
     note: text("note"),
+    /** Manual correction on top of API data for the same account/date (FINANCIAL_MODEL §5.6 double-counting guard). */
+    isAdjustment: boolean("is_adjustment").notNull().default(false),
     enteredByUserId: text("entered_by_user_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
