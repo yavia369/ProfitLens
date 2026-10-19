@@ -3,7 +3,8 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 8 — Additional integrations: PLANNING** (2026-10-19). Phase 7 approved by the owner on 2026-10-19
+**Phase 8 — Additional integrations: IN PROGRESS** (2026-10-19). Scope confirmed by the owner: full M3,
+verified against current docs (network hosts to be allowed by the owner, B9). Phase 7 approved by the owner on 2026-10-19
 ("CONFIRM PHASE 7"). Phase 6 was approved with the live Google Ads check deferred until the owner completes B4
 (resume steps below still apply).
 
@@ -11,7 +12,17 @@ Phase 8 scoping facts (2026-10-19): the owner's only connected ad platform is Go
 `get_connected_platforms`: no Meta, TikTok or others); Luraflo's only payment gateway is Shopify Payments (33
 transactions, exact fees already); 31 of 32 orders carry `utm_source=google`. Every Phase 8 host is blocked by the
 container network policy: graph.facebook.com, developers.facebook.com, business-api.tiktok.com, api.stripe.com,
-docs.stripe.com, api-m.paypal.com, developer.paypal.com and all FX sources (B2). Scope to be confirmed with the owner.
+docs.stripe.com, api-m.paypal.com, developer.paypal.com and all FX sources (B2).
+
+Phase 8 plan:
+1. FX: rate provider (ECB daily reference rates, via one allowed FX host), daily import job, FX-converted
+   consolidated P&L and comparison across currencies (rates stored in `fx_rate`; missing rates flagged, never 1:1).
+2. Meta Ads: connection (system-user or user token for the owner's own ad accounts), account discovery and mapping,
+   daily campaign spend + platform value sync with restatement window, same double-counting rules as Google (D-042).
+3. TikTok Ads: same shape as Meta if API access is granted (app review, U6); otherwise documented as blocked.
+4. Payment fees: Stripe balance transactions and PayPal transaction search matched to Shopify transactions, so
+   third-party gateway fees become actual instead of rule estimates.
+5. Verification against current docs, live runs where the owner has accounts, docs and report.
 `SHOPIFY_*` are cloud environment variables. **Never ask for these or Google credentials in chat, never print them.**
 
 Phase 7 plan (PRODUCT_REQUIREMENTS M2):
@@ -111,7 +122,7 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
   - weight-tiered shipping rules; migration `0005_team_weight_shipping`.
 
 ## In progress
-- Phase 8 scope confirmation with the owner. Phase 6 live verification still pending B4.
+- Phase 8: FX-converted consolidation (network-independent part) while B9 is pending. Phase 6 live verification pending B4.
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -142,10 +153,11 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | B8 | **Owner action:** Luraflo has no product costs (41 sold variants, 7,817 total) and no shipping rule, so every order is flagged incomplete and profit is overstated. Enter costs on Product costs (export CSV → fill → import), add a shipping rule and the running expenses (Shopify plan, apps) | Accurate profit figures |
 | B6 | Webhook delivery needs a public URL; until Phase 9 the 15-min poll covers it (D-029) | Phase 9 |
 | B4 | **Owner action:** Google Cloud project with Google Ads API Explorer access + service account key, added as a read-only user in Google Ads — steps in `docs/GOOGLE_ADS_SETUP.md` (sent 2026-10-19) | Phase 6 live verification |
+| B9 | **Owner action (Phase 8):** allow in the environment's network settings: graph.facebook.com, developers.facebook.com, business-api.tiktok.com, ads.tiktok.com, api.stripe.com, docs.stripe.com, api-m.paypal.com, developer.paypal.com, and www.ecb.europa.eu (or api.frankfurter.app). Live runs also need the matching accounts/apps | Phase 8 verification |
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Owner: confirm the Phase 8 scope; B4 (Google Ads access, then "Continue Phase 6" for the live
+1. Owner: B9 (network allow-list for Phase 8); B4 (Google Ads access, then "Continue Phase 6" for the live
    check); B8 (Luraflo costs, shipping rule, expenses).
 2. Phase 8 (after approval), per the master brief.
 
