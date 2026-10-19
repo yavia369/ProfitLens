@@ -84,3 +84,8 @@ export const DEMO_GOOGLE_CAMPAIGNS = [
   { id: "20431002", name: "Shopping - All products", share: "0.48", valueShare: "0.47" },
   { id: "20431003", name: "PMax - Prospecting", share: "0.30", valueShare: "0.22" },
 ] as const;
+
+/** Stable id of a demo product (variants of one product share a title). */
+export function demoProductId(productTitle: string): string {
+  return `demo-p-${productTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}

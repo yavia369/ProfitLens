@@ -180,6 +180,31 @@ describe("reporting service", () => {
     expect(dec(r.totals.platformValue!).toFixed(6)).toBe(dec(google.platformConversionValue!).toFixed(6));
   });
 
+  it("products: allocated ad spend sums exactly to the store's, per method; product detail agrees with the list", async () => {
+    const range = { start: "2026-09-01", end: "2026-09-30" };
+    const adSpend = sumComponents(await source.getDailyComponents("demo", range)).adSpend;
+    for (const method of ["revenue", "units"] as const) {
+      const r = (await service.products("demo", range, method))!;
+      expect(sum(r.rows.map((x) => dec(x.allocatedAdSpend!))).toFixed(6)).toBe(adSpend.toFixed(6));
+      expect(r.allocation).toMatchObject({ method, adSpend: adSpend.toFixed(6) });
+    }
+    expect((await service.products("demo", range, null))!.rows.every((x) => x.allocatedAdSpend === null)).toBe(true);
+
+    const list = (await service.products("demo", range, "revenue"))!.rows.filter((x) => x.productTitle === "Trail Runner Sneaker");
+    const d = (await service.productDetail("demo", list[0]!.productId, range))!;
+    expect(d.variants).toHaveLength(list.length);
+    expect(d.series).toHaveLength(30);
+    expect(dec(d.totals.netSales).toFixed(6)).toBe(sum(list.map((x) => dec(x.netSales))).toFixed(6));
+    // The daily series adds up to the same totals (units, net sales, gross profit).
+    expect(d.series.reduce((n, p) => n + p.unitsSold, 0)).toBe(d.totals.unitsSold);
+    expect(sum(d.series.map((p) => dec(p.netSales))).toFixed(6)).toBe(dec(d.totals.netSales).toFixed(6));
+    expect(sum(d.series.map((p) => dec(p.grossProfit))).toFixed(6)).toBe(dec(d.totals.grossProfit).toFixed(6));
+    const byRevenue = d.allocations.find((a) => a.method === "revenue")!;
+    expect(dec(byRevenue.allocated).toFixed(6)).toBe(sum(list.map((x) => dec(x.allocatedAdSpend!))).toFixed(6));
+    expect(dec(byRevenue.profitAfterAds).toFixed(6)).toBe(dec(d.totals.grossProfit).minus(dec(byRevenue.allocated)).toFixed(6));
+    expect(await service.productDetail("demo", "nope", range)).toBeNull();
+  });
+
   it("returns null for unknown stores", async () => {
     expect(await service.dashboard("nope", { start: "2026-10-01", end: "2026-10-02" }, "none")).toBeNull();
   });

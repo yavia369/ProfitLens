@@ -26,6 +26,7 @@ import type {
   BreakdownLine,
   CostStatus,
   CustomerActivity,
+  ProductDailyRow,
   OrderDetail,
   OrderQuery,
   OrderRow,
@@ -499,7 +500,7 @@ export class DbReportingDataSource implements ReportingDataSource {
         where c.store_id = ${storeId} and c.variant_id is not null and c.local_date between ${range.start}::date and ${range.end}::date
         group by 1
       )
-      select v.id as variant_id, pr.title as product_title, v.title as variant_title, coalesce(v.sku, '') as sku,
+      select v.id as variant_id, pr.id as product_id, pr.title as product_title, v.title as variant_title, coalesce(v.sku, '') as sku,
         coalesce(s.units, 0) as units, coalesce(s.gross, 0)::text as gross, coalesce(s.discounts, 0)::text as discounts,
         coalesce(s.returns, 0)::text as returns, coalesce(c.cogs, 0)::text as cogs, coalesce(c.status, 'missing') as status
       from sales s
@@ -508,12 +509,13 @@ export class DbReportingDataSource implements ReportingDataSource {
       join product pr on pr.id = v.product_id
       where v.store_id = ${storeId}
       order by coalesce(s.gross, 0) desc, v.id`);
-    type Row = { variant_id: string; product_title: string; variant_title: string; sku: string; units: number; gross: string; discounts: string; returns: string; cogs: string; status: CostStatus };
+    type Row = { variant_id: string; product_id: string; product_title: string; variant_title: string; sku: string; units: number; gross: string; discounts: string; returns: string; cogs: string; status: CostStatus };
     return (res.rows as Row[]).map((r) => {
       const net = dec(r.gross).minus(dec(r.discounts)).minus(dec(r.returns));
       const cogs = dec(r.cogs);
       return {
         variantId: r.variant_id,
+        productId: r.product_id,
         productTitle: r.product_title,
         variantTitle: r.variant_title === "Default Title" ? "" : r.variant_title,
         sku: r.sku,
@@ -528,5 +530,36 @@ export class DbReportingDataSource implements ReportingDataSource {
         costStatus: r.status,
       };
     });
+  }
+  async getProductDaily(storeId: string, productId: string, range: DateRange): Promise<ProductDailyRow[]> {
+    await this.store(storeId);
+    // Same ledger rules as listProducts, grouped by day for one product's variants.
+    const res = await this.db.execute(sql`
+      with sales as (
+        select l.happened_local_date as d,
+          sum(case when ${ADDS_UNITS} then abs(coalesce(l.quantity, 0)) else -abs(coalesce(l.quantity, 0)) end)::int as units,
+          -- gross − discounts − returns of listProducts: return rows carry negative amounts.
+          sum(l.total_amount - l.total_tax_amount) as net
+        from sale_ledger_entry l
+        join order_profit p on p.order_id = l.order_id and p.included
+        join order_line_item li on li.store_id = l.store_id and li.shopify_gid = l.line_item_gid
+        join variant v on v.id = li.variant_id
+        where l.store_id = ${storeId} and v.product_id = ${productId} and l.line_type = 'PRODUCT' and not li.is_gift_card
+          and l.happened_local_date between ${range.start}::date and ${range.end}::date
+        group by 1
+      ),
+      costs as (
+        select c.local_date as d, sum(c.amount) as cogs
+        from order_cogs_line c
+        join order_profit p on p.order_id = c.order_id and p.included
+        join variant v on v.id = c.variant_id
+        where c.store_id = ${storeId} and v.product_id = ${productId} and c.local_date between ${range.start}::date and ${range.end}::date
+        group by 1
+      )
+      select coalesce(s.d, c.d)::text as date, coalesce(s.units, 0) as units, coalesce(s.net, 0)::text as net, coalesce(c.cogs, 0)::text as cogs
+      from sales s full join costs c on c.d = s.d
+      order by 1`);
+    type Row = { date: string; units: number; net: string; cogs: string };
+    return (res.rows as Row[]).map((r) => ({ date: r.date, unitsSold: r.units, netSales: m(dec(r.net)), cogs: m(dec(r.cogs)) }));
   }
 }

@@ -7,3 +7,4 @@ export * from "./engine";
 export * from "./bridge";
 export * from "./customers";
 export * from "./ads";
+export * from "./allocation";

@@ -18,6 +18,7 @@ import type {
   BreakdownLine,
   CostStatus,
   CustomerActivity,
+  ProductDailyRow,
   OrderDetail,
   OrderQuery,
   OrderRow,
@@ -25,7 +26,7 @@ import type {
   ReportingDataSource,
   StoreSummary,
 } from "../reporting/types";
-import { DEMO_CATALOG, DEMO_FIXED_EXPENSES, DEMO_GOOGLE_CAMPAIGNS, DEMO_RULES, DEMO_STORE } from "./catalog";
+import { DEMO_CATALOG, DEMO_FIXED_EXPENSES, DEMO_GOOGLE_CAMPAIGNS, DEMO_RULES, DEMO_STORE, demoProductId } from "./catalog";
 import { demoAdSpend, demoUtm, eventRevenue, generateDemoHistory, orderEvents, type DemoEvent, type DemoHistory, type DemoOrder } from "./generator";
 
 const m = (d: Decimal) => toMoneyString(d);
@@ -360,15 +361,17 @@ export class DemoDataSource implements ReportingDataSource {
     return { rows, historyStart: DEMO_STORE.historyStart, historyComplete: true };
   }
 
-  async listProducts(storeId: string, range: DateRange): Promise<ProductRow[]> {
-    if (storeId !== DEMO_STORE.id) return [];
+  /** Variant sales in the range keyed by `keyOf(variant, date)` (event-dated: refunds on their own day). */
+  private variantSales(range: DateRange, keyOf: (variantId: string, date: LocalDate) => string | null) {
     const h = this.data();
     const now = this.asOf();
     type Acc = { units: number; gross: Decimal; disc: Decimal; ret: Decimal; cogs: Decimal };
     const acc = new Map<string, Acc>();
-    const get = (id: string) => {
-      let a = acc.get(id);
-      if (!a) acc.set(id, (a = { units: 0, gross: ZERO, disc: ZERO, ret: ZERO, cogs: ZERO }));
+    const get = (variantId: string, date: LocalDate) => {
+      const key = keyOf(variantId, date);
+      if (key === null) return null;
+      let a = acc.get(key);
+      if (!a) acc.set(key, (a = { units: 0, gross: ZERO, disc: ZERO, ret: ZERO, cogs: ZERO }));
       return a;
     };
     const inRange = (d: LocalDate) => d >= range.start && d <= range.end;
@@ -376,7 +379,8 @@ export class DemoDataSource implements ReportingDataSource {
       if (inRange(o.localDate)) {
         for (const l of o.lines) {
           if (l.variant.isGiftCard) continue;
-          const a = get(l.variant.id);
+          const a = get(l.variant.id, o.localDate);
+          if (!a) continue;
           a.units += l.quantity;
           a.gross = a.gross.plus(l.unitPrice.times(l.quantity));
           a.disc = a.disc.plus(l.discount);
@@ -386,18 +390,26 @@ export class DemoDataSource implements ReportingDataSource {
       if (o.refund && o.refund.at <= now && inRange(o.refund.localDate)) {
         for (const rl of o.refund.lines) {
           const l = o.lines[rl.lineIndex]!;
-          const a = get(l.variant.id);
+          const a = get(l.variant.id, o.refund.localDate);
+          if (!a) continue;
           a.units -= rl.quantity;
           a.ret = a.ret.plus(l.unitPrice.minus(l.discount.div(l.quantity)).times(rl.quantity));
           if (rl.restock === "RETURN" && l.unitCost) a.cogs = a.cogs.minus(l.unitCost.times(rl.quantity));
         }
       }
     }
+    return acc;
+  }
+
+  async listProducts(storeId: string, range: DateRange): Promise<ProductRow[]> {
+    if (storeId !== DEMO_STORE.id) return [];
+    const acc = this.variantSales(range, (variantId) => variantId);
     return DEMO_CATALOG.filter((v) => !v.isGiftCard && acc.has(v.id)).map((v) => {
       const a = acc.get(v.id)!;
       const net = a.gross.minus(a.disc).minus(a.ret);
       return {
         variantId: v.id,
+        productId: demoProductId(v.productTitle),
         productTitle: v.productTitle,
         variantTitle: v.variantTitle,
         sku: v.sku,
@@ -412,6 +424,15 @@ export class DemoDataSource implements ReportingDataSource {
         costStatus: v.costs.length === 0 ? "missing" : "manual",
       };
     });
+  }
+
+  async getProductDaily(storeId: string, productId: string, range: DateRange): Promise<ProductDailyRow[]> {
+    if (storeId !== DEMO_STORE.id) return [];
+    const variants = new Set(DEMO_CATALOG.filter((v) => !v.isGiftCard && demoProductId(v.productTitle) === productId).map((v) => v.id));
+    const acc = this.variantSales(range, (variantId, date) => (variants.has(variantId) ? date : null));
+    return [...acc.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, a]) => ({ date, unitsSold: a.units, netSales: m(a.gross.minus(a.disc).minus(a.ret)), cogs: m(a.cogs) }));
   }
 }
 

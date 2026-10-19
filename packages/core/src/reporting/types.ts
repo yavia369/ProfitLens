@@ -82,6 +82,7 @@ export interface OrderQuery {
 
 export interface ProductRow {
   readonly variantId: string;
+  readonly productId: string;
   readonly productTitle: string;
   readonly variantTitle: string;
   readonly sku: string;
@@ -95,6 +96,14 @@ export interface ProductRow {
   /** gross profit ÷ net sales; null when net sales are zero. */
   readonly grossMargin: string | null;
   readonly costStatus: CostStatus;
+}
+
+/** One product's sales on one store-local day (event-dated, like the product report). */
+export interface ProductDailyRow {
+  readonly date: LocalDate;
+  readonly unitsSold: number;
+  readonly netSales: MoneyString;
+  readonly cogs: MoneyString;
 }
 
 export interface CustomerActivity {
@@ -115,6 +124,8 @@ export interface ReportingDataSource {
   listOrders(storeId: string, query: OrderQuery): Promise<{ rows: OrderRow[]; total: number }>;
   getOrder(storeId: string, orderId: string): Promise<OrderDetail | null>;
   listProducts(storeId: string, range: DateRange): Promise<ProductRow[]>;
+  /** Per-day sales of one product (all its variants) in the range; days without sales are omitted. */
+  getProductDaily(storeId: string, productId: string, range: DateRange): Promise<ProductDailyRow[]>;
   /**
    * Per customer and store-local day, from the start of stored history through `end` (orders excluded by policy
    * are left out). When the history is incomplete (`historyComplete` false), customers who first ordered before

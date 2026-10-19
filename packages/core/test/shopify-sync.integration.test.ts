@@ -404,6 +404,14 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     expect(products.find((x) => x.sku === "SNK-8")).toMatchObject({ unitsSold: 1, cogs: "31.200000", costStatus: "actual" });
     expect(products.find((x) => x.sku === "SOCK")).toMatchObject({ unitsSold: 2, cogs: "0.000000", costStatus: "missing" });
 
+    // Product daily rows add up to the product report (net sales, units, COGS) for the same range.
+    const sneaker = products.find((x) => x.sku === "SNK-8")!;
+    const variantsOfProduct = products.filter((x) => x.productId === sneaker.productId);
+    const daily = await source.getProductDaily(conn.storeId, sneaker.productId, range);
+    expect(sum(daily.map((d) => dec(d.netSales))).toFixed(2)).toBe(sum(variantsOfProduct.map((x) => dec(x.netSales))).toFixed(2));
+    expect(sum(daily.map((d) => dec(d.cogs))).toFixed(2)).toBe(sum(variantsOfProduct.map((x) => dec(x.cogs))).toFixed(2));
+    expect(daily.reduce((n, d) => n + d.unitsSold, 0)).toBe(variantsOfProduct.reduce((n, x) => n + x.unitsSold, 0));
+
     // Customers: the one customer is new in October; event-dated revenue (with the refund) matches the order.
     const activity = await source.getCustomerActivity(conn.storeId, range.end);
     expect(activity.historyComplete).toBe(false); // read_all_orders not granted

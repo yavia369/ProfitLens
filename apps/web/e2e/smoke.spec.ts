@@ -76,6 +76,13 @@ test.describe.serial("auth and dashboard", () => {
     await expect(page.getByRole("heading", { name: "Products" })).toBeVisible();
     await expect(page.getByText("Trail Runner Sneaker").first()).toBeVisible();
     await shot(page, "products");
+    await page.getByLabel("Ad spend allocation").selectOption("revenue");
+    await expect(page.getByRole("columnheader", { name: "Profit after ads (est.)" })).toBeVisible();
+    await page.getByRole("link", { name: "Trail Runner Sneaker" }).first().click();
+    await expect(page.getByRole("heading", { name: "Trail Runner Sneaker" })).toBeVisible();
+    await expect(page.getByText("By share of net sales")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "TRS-BLK-08" })).toBeVisible();
+    await shot(page, "product-detail");
 
     await page.goto("/pnl?store=demo&preset=this_year&granularity=month");
     await expect(page.getByText("Management report — not an accounting statement")).toBeVisible();

@@ -1,7 +1,6 @@
 "use client";
 
-import type { ProductRow, StoreSummary } from "@profitlens/core";
-import type { DateRange } from "@profitlens/finance";
+import type { ProductRow, ProductsReport, StoreSummary } from "@profitlens/core";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Boxes, Download, Search } from "lucide-react";
 import Link from "next/link";
@@ -38,11 +37,13 @@ export function ProductsView() {
   const [filter, setFilter] = useState<"all" | "loss" | "missing">("all");
   const [sort, setSort] = useState<SortKey>("grossProfit");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
+  const [allocation, setAllocation] = useState<"none" | "revenue" | "units">("none");
   const q = useQuery({
-    queryKey: ["products", qs],
-    queryFn: () => apiGet<{ rows: ProductRow[]; range: DateRange; currency: string }>(`/api/reports/products?${qs}`),
+    queryKey: ["products", qs, allocation],
+    queryFn: () => apiGet<ProductsReport>(`/api/reports/products?${qs}&allocation=${allocation}`),
     placeholderData: (prev) => prev,
   });
+  const alloc = q.data?.allocation ?? null;
   const stores = useQuery({ queryKey: ["stores"], queryFn: () => apiGet<{ stores: StoreSummary[] }>("/api/stores") });
   const current = stores.data?.stores.find((s) => s.id === params.store);
   const currency = q.data?.currency ?? current?.currency ?? "USD";
@@ -60,14 +61,19 @@ export function ProductsView() {
     downloadCsv(
       `products_${q.data?.range.start}_${q.data?.range.end}.csv`,
       toCsv(
-        ["product", "variant", "sku", "units_sold", "gross_sales", "discounts", "returns", "net_sales", "cogs", "gross_profit", "gross_margin", "cost_status", "currency"],
-        rows.map((r) => [r.productTitle, r.variantTitle, r.sku, r.unitsSold, r.grossSales, r.discounts, r.returns, r.netSales, r.cogs, r.grossProfit, r.grossMargin, r.costStatus, currency]),
+        ["product", "variant", "sku", "units_sold", "gross_sales", "discounts", "returns", "net_sales", "cogs", "gross_profit", "gross_margin", "cost_status", "currency", "ad_spend_allocated_estimate", "profit_after_ads_estimate", "allocation_method"],
+        rows.map((r) => [r.productTitle, r.variantTitle, r.sku, r.unitsSold, r.grossSales, r.discounts, r.returns, r.netSales, r.cogs, r.grossProfit, r.grossMargin, r.costStatus, currency, r.allocatedAdSpend, r.profitAfterAds, alloc?.label ?? ""]),
       ),
     );
 
   return (
     <div>
-      <ReportToolbar title="Products" description="Variant-level gross profit (net sales − COGS). Ad spend and fixed costs are not allocated to products." resolved={q.data?.range} showCompare={false} />
+      <ReportToolbar
+        title="Products"
+        description="Variant-level gross profit (net sales − COGS). Ad spend can be spread over products with a labelled estimate; fixed costs are not allocated."
+        resolved={q.data?.range}
+        showCompare={false}
+      />
       {current?.isDemo ? <DemoBanner /> : null}
       {missing > 0 ? (
         <Alert tone="warning" title={`${missing} variant${missing === 1 ? "" : "s"} sold in this period have no cost configured`} className="mb-4">
@@ -77,6 +83,12 @@ export function ProductsView() {
               Set product costs
             </Link>
           ) : null}
+        </Alert>
+      ) : null}
+      {alloc ? (
+        <Alert title={`Ad spend allocated ${alloc.label.toLowerCase()} — an estimate`} className="mb-4">
+          {formatMoney(alloc.adSpend, currency)} of ad spend in this range is spread over the variants sold. {alloc.description} Variants with no
+          sales (or more returns than sales) carry none.
         </Alert>
       ) : null}
       <Card>
@@ -89,6 +101,11 @@ export function ProductsView() {
             <option value="all">All variants</option>
             <option value="loss">Loss-making only</option>
             <option value="missing">Missing cost only</option>
+          </NativeSelect>
+          <NativeSelect value={allocation} onChange={(e) => setAllocation(e.target.value as typeof allocation)} aria-label="Ad spend allocation">
+            <option value="none">Ad spend: not allocated</option>
+            <option value="revenue">Ad spend: by share of net sales (estimate)</option>
+            <option value="units">Ad spend: by share of units (estimate)</option>
           </NativeSelect>
           <Button variant="outline" className="md:ml-auto" onClick={exportCsv} disabled={!rows.length}>
             <Download /> Export CSV
@@ -123,6 +140,12 @@ export function ProductsView() {
                   </TH>
                 ))}
                 <TH className="text-right">COGS</TH>
+                {alloc ? (
+                  <>
+                    <TH className="text-right">Ad spend (est.)</TH>
+                    <TH className="text-right">Profit after ads (est.)</TH>
+                  </>
+                ) : null}
                 <TH>Cost</TH>
               </TR>
             </THead>
@@ -130,7 +153,9 @@ export function ProductsView() {
               {rows.map((r) => (
                 <TR key={r.variantId}>
                   <TD className="whitespace-normal">
-                    <p className="font-medium">{r.productTitle}</p>
+                    <Link href={`/products/${encodeURIComponent(r.productId)}?${qs}`} className="font-medium hover:underline">
+                      {r.productTitle}
+                    </Link>
                     <p className="text-xs text-muted-foreground">{r.variantTitle}</p>
                   </TD>
                   <TD className="text-muted-foreground">{r.sku}</TD>
@@ -139,6 +164,12 @@ export function ProductsView() {
                   <TD className={cn("text-right font-medium tabular", signOf(r.grossProfit) === -1 && "text-negative")}>{formatMoney(r.grossProfit, currency)}</TD>
                   <TD className="text-right tabular">{formatPercent(r.grossMargin)}</TD>
                   <TD className="text-right tabular text-muted-foreground">{formatMoney(r.cogs, currency, { asCost: true })}</TD>
+                  {alloc ? (
+                    <>
+                      <TD className="text-right tabular text-muted-foreground">{formatMoney(r.allocatedAdSpend, currency, { asCost: true })}</TD>
+                      <TD className={cn("text-right tabular", signOf(r.profitAfterAds) === -1 && "text-negative")}>{formatMoney(r.profitAfterAds, currency)}</TD>
+                    </>
+                  ) : null}
                   <TD>
                     <CostStatusBadge status={r.costStatus} />
                   </TD>

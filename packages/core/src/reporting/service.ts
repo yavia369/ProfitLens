@@ -1,5 +1,8 @@
 import {
+  AD_ALLOCATION_METHODS,
   addTotals,
+  allocateByShare,
+  eachDay,
   attributeCampaigns,
   belowBreakEven,
   customerAnalytics,
@@ -20,13 +23,14 @@ import {
   type ComparisonMode,
   type ComponentTotals,
   type DailyComponents,
+  type AdAllocationMethod,
   type DateRange,
   Decimal,
   type Granularity,
   type LocalDate,
   type MetricKey,
 } from "@profitlens/finance";
-import type { AdChannelSpend, ReportingDataSource, StoreSummary } from "./types";
+import type { AdChannelSpend, CostStatus, ProductRow, ReportingDataSource, StoreSummary } from "./types";
 
 const s = (d: Decimal | null): string | null => (d === null ? null : toMoneyString(d));
 
@@ -179,6 +183,49 @@ export interface AdsReport {
     readonly reason: "no_utm" | "not_paid_platform" | "no_campaign_data" | "no_matching_campaign" | "ambiguous";
   }[];
 }
+
+export interface ProductAllocation {
+  readonly method: AdAllocationMethod;
+  readonly label: string;
+  readonly description: string;
+  /** Store ad spend in the range that was spread over products. */
+  readonly adSpend: string;
+}
+
+export interface ProductsReport {
+  readonly range: DateRange;
+  readonly currency: string;
+  readonly rows: readonly (ProductRow & { readonly allocatedAdSpend: string | null; readonly profitAfterAds: string | null })[];
+  /** Null when no allocation method was chosen. */
+  readonly allocation: ProductAllocation | null;
+}
+
+export interface ProductDetailReport {
+  readonly store: StoreSummary;
+  readonly range: DateRange;
+  readonly product: { readonly id: string; readonly title: string };
+  readonly totals: {
+    readonly unitsSold: number;
+    readonly grossSales: string;
+    readonly discounts: string;
+    readonly returns: string;
+    readonly netSales: string;
+    readonly cogs: string;
+    readonly grossProfit: string;
+    readonly grossMargin: string | null;
+    readonly costStatus: CostStatus;
+    /** Share of all products' net sales in the range. */
+    readonly shareOfNetSales: string | null;
+  };
+  readonly variants: readonly ProductRow[];
+  /** The product's share of store ad spend under each method, side by side (estimates, never attribution). */
+  readonly allocations: readonly (ProductAllocation & { readonly allocated: string; readonly profitAfterAds: string })[];
+  /** One point per day in the range (zero-filled). */
+  readonly series: readonly { readonly date: string; readonly unitsSold: number; readonly netSales: string; readonly grossProfit: string }[];
+}
+
+const COST_STATUS_ORDER: readonly CostStatus[] = ["missing", "estimated", "rule", "manual", "actual"];
+const worstCostStatus = (list: readonly CostStatus[]): CostStatus => COST_STATUS_ORDER.find((x) => list.includes(x)) ?? "actual";
 
 function bucketize(days: readonly DailyComponents[], granularity: Granularity): Map<string, DailyComponents[]> {
   const out = new Map<string, DailyComponents[]>();
@@ -337,6 +384,80 @@ export class ReportingService {
         }))
         .sort((p, q) => dec(q.spend ?? "0").comparedTo(dec(p.spend ?? "0"))),
       unattributed: a.unattributed.map((g) => ({ ...g, revenue: toMoneyString(g.revenue), orderProfit: toMoneyString(g.orderProfit) })),
+    };
+  }
+
+  /** Store ad spend spread over product variants by `method` (exact to 6 dp; Σ parts = ad spend). */
+  private allocate(rows: readonly ProductRow[], adSpend: Decimal, method: AdAllocationMethod): Map<string, Decimal> {
+    return allocateByShare(
+      adSpend,
+      rows.map((r) => ({ key: r.variantId, base: method === "revenue" ? dec(r.netSales) : new Decimal(r.unitsSold) })),
+    );
+  }
+
+  async products(storeId: string, range: DateRange, method: AdAllocationMethod | null): Promise<ProductsReport | null> {
+    const store = await this.source.getStore(storeId);
+    if (!store) return null;
+    const [rows, days] = await Promise.all([this.source.listProducts(storeId, range), method ? this.source.getDailyComponents(storeId, range) : Promise.resolve([])]);
+    if (!method) return { range, currency: store.currency, rows: rows.map((r) => ({ ...r, allocatedAdSpend: null, profitAfterAds: null })), allocation: null };
+    const adSpend = sumComponents(days).adSpend;
+    const parts = this.allocate(rows, adSpend, method);
+    return {
+      range,
+      currency: store.currency,
+      rows: rows.map((r) => {
+        const a = parts.get(r.variantId)!;
+        return { ...r, allocatedAdSpend: toMoneyString(a), profitAfterAds: toMoneyString(dec(r.grossProfit).minus(a)) };
+      }),
+      allocation: { method, ...AD_ALLOCATION_METHODS[method], adSpend: toMoneyString(adSpend) },
+    };
+  }
+
+  async productDetail(storeId: string, productId: string, range: DateRange): Promise<ProductDetailReport | null> {
+    const store = await this.source.getStore(storeId);
+    if (!store) return null;
+    const [rows, days, daily] = await Promise.all([
+      this.source.listProducts(storeId, range),
+      this.source.getDailyComponents(storeId, range),
+      this.source.getProductDaily(storeId, productId, range),
+    ]);
+    const variants = rows.filter((r) => r.productId === productId);
+    if (variants.length === 0) return null;
+    const total = (k: "grossSales" | "discounts" | "returns" | "netSales" | "cogs" | "grossProfit", list: readonly ProductRow[] = variants) =>
+      list.reduce((t, r) => t.plus(dec(r[k])), dec("0"));
+    const net = total("netSales");
+    const gp = total("grossProfit");
+    const allNet = total("netSales", rows);
+    const adSpend = sumComponents(days).adSpend;
+    const byDate = new Map(daily.map((d) => [d.date, d]));
+    return {
+      store,
+      range,
+      product: { id: productId, title: variants[0]!.productTitle },
+      totals: {
+        unitsSold: variants.reduce((n, r) => n + r.unitsSold, 0),
+        grossSales: toMoneyString(total("grossSales")),
+        discounts: toMoneyString(total("discounts")),
+        returns: toMoneyString(total("returns")),
+        netSales: toMoneyString(net),
+        cogs: toMoneyString(total("cogs")),
+        grossProfit: toMoneyString(gp),
+        grossMargin: s(ratio(gp, net)),
+        costStatus: worstCostStatus(variants.map((v) => v.costStatus)),
+        shareOfNetSales: s(ratio(net, allNet)),
+      },
+      variants,
+      allocations: (Object.keys(AD_ALLOCATION_METHODS) as AdAllocationMethod[]).map((method) => {
+        const parts = this.allocate(rows, adSpend, method);
+        const allocated = variants.reduce((t, v) => t.plus(parts.get(v.variantId)!), dec("0"));
+        return { method, ...AD_ALLOCATION_METHODS[method], adSpend: toMoneyString(adSpend), allocated: toMoneyString(allocated), profitAfterAds: toMoneyString(gp.minus(allocated)) };
+      }),
+      series: eachDay(range).map((date) => {
+        const d = byDate.get(date);
+        return d
+          ? { date, unitsSold: d.unitsSold, netSales: d.netSales, grossProfit: toMoneyString(dec(d.netSales).minus(dec(d.cogs))) }
+          : { date, unitsSold: 0, netSales: "0.000000", grossProfit: "0.000000" };
+      }),
     };
   }
 
