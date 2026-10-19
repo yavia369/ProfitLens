@@ -1,4 +1,5 @@
 import { QUEUES, type OrderJob, type StoreJob } from "@profitlens/core/jobs";
+import { ProfitService } from "@profitlens/core/profit";
 import { ShopifySyncService } from "@profitlens/core/shopify";
 import { schema } from "@profitlens/db";
 import { eq } from "drizzle-orm";
@@ -6,12 +7,13 @@ import { PgBoss } from "pg-boss";
 import { buildDeps, log } from "./deps";
 
 /**
- * Background worker: Shopify backfill, incremental sync (every 15 min), webhook-triggered order refresh
- * and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
+ * Background worker: Shopify backfill, incremental sync (every 15 min), webhook-triggered order refresh,
+ * profit recalculation and nightly reconciliation. Runs as its own process (ARCHITECTURE §7).
  */
 async function main() {
   const deps = buildDeps();
   const sync = new ShopifySyncService(deps);
+  const profit = new ProfitService(deps.db);
   const boss = new PgBoss({ connectionString: deps.databaseUrl, schema: "pgboss" });
   boss.on("error", (error) => log.error({ err: error }, "pg-boss error"));
   await boss.start();
@@ -39,6 +41,7 @@ async function main() {
   await run<StoreJob>(QUEUES.incremental, (d) => sync.incremental(d.storeId));
   await run<OrderJob>(QUEUES.order, (d) => sync.syncOrder(d.storeId, d.orderGid));
   await run<StoreJob>(QUEUES.reconcile, (d) => sync.reconcileOrderCounts(d.storeId));
+  await run<StoreJob>(QUEUES.recalcStore, (d) => profit.recalcStore(d.storeId));
 
   await boss.work(QUEUES.incrementalAll, async () => {
     for (const storeId of await activeStores()) await boss.send(QUEUES.incremental, { storeId }, { singletonKey: storeId, retryLimit: 5, retryBackoff: true });

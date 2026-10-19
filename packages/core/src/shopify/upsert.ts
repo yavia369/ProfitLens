@@ -103,6 +103,8 @@ export async function upsertOrderFacts(db: Database, storeId: string, f: OrderFa
 export interface UpsertProductResult {
   readonly variants: number;
   readonly costVersionsCreated: number;
+  /** Variants whose effective cost changed (their orders need recalculation). */
+  readonly costChangedVariantIds: readonly string[];
 }
 
 /**
@@ -123,6 +125,7 @@ export async function upsertProductFacts(db: Database, storeId: string, currency
       })
       .returning({ id: schema.product.id });
     let created = 0;
+    const changed: string[] = [];
     for (const v of f.variants) {
       const { unitCost, unitCostCurrency: _cur, ...variantValues } = v;
       const [row] = await tx
@@ -133,13 +136,24 @@ export async function upsertProductFacts(db: Database, storeId: string, currency
           set: excludedSet(schema.variant, ["productId", "inventoryItemGid", "title", "sku", "price", "shopifyUnitCost", "weightGrams", "requiresShipping", "shopifyUpdatedAt", "deletedAt"]),
         })
         .returning({ id: schema.variant.id });
-      if (unitCost !== null) created += await syncShopifyCostVersion(tx, storeId, row!.id, currency, unitCost, today, seedFrom);
+      if (unitCost === null) continue;
+      const r = await syncShopifyCostVersion(tx, storeId, row!.id, currency, unitCost, today, seedFrom);
+      created += r.created;
+      if (r.changed) changed.push(row!.id);
     }
-    return { variants: f.variants.length, costVersionsCreated: created };
+    return { variants: f.variants.length, costVersionsCreated: created, costChangedVariantIds: changed };
   });
 }
 
-async function syncShopifyCostVersion(tx: Executor, storeId: string, variantId: string, currency: string, unitCost: string, today: string, seedFrom: string): Promise<number> {
+async function syncShopifyCostVersion(
+  tx: Executor,
+  storeId: string,
+  variantId: string,
+  currency: string,
+  unitCost: string,
+  today: string,
+  seedFrom: string,
+): Promise<{ created: number; changed: boolean }> {
   const open = await tx
     .select()
     .from(schema.variantCostVersion)
@@ -149,16 +163,16 @@ async function syncShopifyCostVersion(tx: Executor, storeId: string, variantId: 
   const note = "Seeded from Shopify cost per item (Shopify keeps only the current value; it is applied to earlier orders until edited).";
   if (!current) {
     const any = await tx.select({ id: schema.variantCostVersion.id }).from(schema.variantCostVersion).where(eq(schema.variantCostVersion.variantId, variantId)).limit(1);
-    if (any.length) return 0; // history exists but is closed: the merchant manages it; don't reopen
+    if (any.length) return { created: 0, changed: false }; // history exists but is closed: the merchant manages it; don't reopen
     await tx.insert(schema.variantCostVersion).values({ storeId, variantId, effectiveFrom: seedFrom, currency, productCost: unitCost, source: "shopify_sync", note });
-    return 1;
+    return { created: 1, changed: true };
   }
-  if (current.source !== "shopify_sync") return 0;
+  if (current.source !== "shopify_sync") return { created: 0, changed: false };
   // Both values are NUMERIC(20,6) strings with fixed scale, so string equality is exact.
-  if (current.productCost === unitCost) return 0;
+  if (current.productCost === unitCost) return { created: 0, changed: false };
   if (current.effectiveFrom >= today) {
     await tx.update(schema.variantCostVersion).set({ productCost: unitCost }).where(eq(schema.variantCostVersion.id, current.id));
-    return 0;
+    return { created: 0, changed: true };
   }
   await tx.update(schema.variantCostVersion).set({ effectiveTo: today }).where(eq(schema.variantCostVersion.id, current.id));
   await tx.insert(schema.variantCostVersion).values({
@@ -170,7 +184,7 @@ async function syncShopifyCostVersion(tx: Executor, storeId: string, variantId: 
     source: "shopify_sync",
     note: "Shopify cost per item changed; new version from this date.",
   });
-  return 1;
+  return { created: 1, changed: true };
 }
 
 /** Recomputes first-order dates and order counts for customers of a store (cheap set-based SQL). */

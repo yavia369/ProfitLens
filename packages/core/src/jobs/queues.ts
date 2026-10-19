@@ -4,6 +4,8 @@ export const QUEUES = {
   incremental: "shopify.incremental",
   order: "shopify.order",
   reconcile: "shopify.reconcile",
+  /** Recalculate every order of a store (policy change, large cost edits). */
+  recalcStore: "profit.recalc-store",
   /** Cron fan-out: enqueue an incremental sync for every active store. */
   incrementalAll: "shopify.incremental-all",
   reconcileAll: "shopify.reconcile-all",
@@ -36,4 +38,8 @@ export function enqueueIncremental(boss: JobSender, storeId: string) {
 
 export function enqueueOrderRefresh(boss: JobSender, storeId: string, orderGid: string) {
   return boss.send(QUEUES.order, { storeId, orderGid } satisfies OrderJob, { ...retry, singletonKey: `${storeId}:${orderGid}` });
+}
+
+export function enqueueRecalcStore(boss: JobSender, storeId: string) {
+  return boss.send(QUEUES.recalcStore, { storeId } satisfies StoreJob, { ...retry, singletonKey: storeId });
 }

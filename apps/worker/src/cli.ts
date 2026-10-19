@@ -1,3 +1,4 @@
+import { ProfitService } from "@profitlens/core/profit";
 import { connectStoreWithClientCredentials, ShopifySyncService } from "@profitlens/core/shopify";
 import { resolveScope, schema } from "@profitlens/db";
 import { eq } from "drizzle-orm";
@@ -10,6 +11,7 @@ import { buildDeps, log } from "./deps";
  *   pnpm --filter @profitlens/worker sync incremental <storeId>
  *   pnpm --filter @profitlens/worker sync reconcile <storeId> [days]
  *   pnpm --filter @profitlens/worker sync status
+ *   pnpm --filter @profitlens/worker sync recalc <storeId> [--force]  # profit results + daily aggregates
  */
 async function main() {
   const [command, arg, arg2] = process.argv.slice(2);
@@ -36,6 +38,9 @@ async function main() {
       break;
     case "reconcile":
       log.info(await sync.reconcileOrderCounts(required(arg), arg2 ? Number(arg2) : 7), "reconcile done");
+      break;
+    case "recalc":
+      log.info(await new ProfitService(deps.db).recalcStore(required(arg), { force: arg2 === "--force" }), "recalc done");
       break;
     case "status": {
       const rows = await deps.db

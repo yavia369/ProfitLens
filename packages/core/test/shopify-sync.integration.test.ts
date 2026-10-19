@@ -7,6 +7,8 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 import { connectStoreWithClientCredentials, ConnectionError, dayBoundsUtc, handleShopifyWebhook, ShopifySyncService } from "../src/shopify";
+import { ProfitService } from "../src/profit";
+import { dec, DEFAULT_POLICY, ENGINE_VERSION, sum } from "@profitlens/finance";
 import { pagedOrder } from "../../shopify/test/fixtures/orders";
 
 const baseUrl = process.env.TEST_DATABASE_URL ?? "postgres://profitlens:profitlens@localhost:5432/profitlens_test";
@@ -272,6 +274,88 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     await sync.incremental(conn.storeId);
     await sync.incremental(conn.storeId);
     expect(state.tokenRequests).toBe(1);
+  });
+
+  // ---------------------------------------------------------------- profit engine on stored facts (Phase 5)
+
+  const money = (v: string | null | undefined) => (v === null || v === undefined ? v : dec(v).toFixed(2));
+
+  it("backfill computes the order result, per-day rows, COGS lines and the store aggregate; a re-run is a no-op", async () => {
+    const { conn, sync } = await setup();
+    const r = await sync.backfill(conn.storeId);
+    expect(r.stats.ordersRecalculated).toBe(1);
+
+    const [p] = await db.select().from(schema.orderProfit);
+    expect(p).toMatchObject({ included: true, isComplete: false, engineVersion: ENGINE_VERSION, policyVersion: 1 });
+    expect(p!.missingComponents).toEqual(["chargeback_fee", "cogs", "shipping"]); // socks have no cost, no shipping rule, no dispute fee
+    expect(money(p!.cogs)).toBe("31.20"); // 2 sneakers × 31.20 − 1 returned & restocked
+    expect(money(p!.chargebacks)).toBe("159.88"); // lost chargeback, capped at the money still held after the refund
+
+    const days = await db.select().from(schema.orderDailyResult).orderBy(schema.orderDailyResult.localDate);
+    expect(days.map((d) => d.localDate)).toEqual(["2026-10-03", "2026-10-04", "2026-10-08", "2026-10-12"]); // order, edit, refund, chargeback (Sydney dates)
+    expect(days.map((d) => money(d.cogs))).toEqual(["62.40", "0.00", "-31.20", "0.00"]);
+    expect(days[0]!.ordersMissingCogs).toBe(1);
+    expect(sum(days.map((d) => dec(d.revenue))).toFixed(2)).toBe(money(p!.revenue));
+    const lines = await db.select().from(schema.orderCogsLine).orderBy(schema.orderCogsLine.localDate, schema.orderCogsLine.kind);
+    expect(lines.map((l) => [l.kind, l.quantity, l.status, money(l.amount)])).toEqual(
+      expect.arrayContaining([["sale", 2, "actual", "62.40"], ["reversal", -1, "actual", "-31.20"], ["sale", 1, "missing", "0.00"]]),
+    );
+
+    const agg = await db.select().from(schema.dailyStoreMetrics).orderBy(schema.dailyStoreMetrics.localDate);
+    expect(agg.map((d) => d.localDate)).toEqual(days.map((d) => d.localDate));
+    expect(agg.map((d) => money(d.revenue))).toEqual(days.map((d) => money(d.revenue)));
+    expect(money(agg[3]!.chargebackLoss)).toBe("159.88");
+
+    const profit = new ProfitService(db);
+    expect(await profit.reconcileAmounts(conn.storeId, "2026-10-01", "2026-10-17")).toEqual([]);
+    expect(await profit.recalcStore(conn.storeId)).toMatchObject({ computed: 0, unchanged: 1 });
+  });
+
+  it("recalculates only what a cost or policy change affects; reconciliation catches a corrupted aggregate", async () => {
+    const { conn, sync } = await setup();
+    await sync.backfill(conn.storeId);
+    const profit = new ProfitService(db);
+
+    // A cost for the socks completes COGS for the orders containing them.
+    const [socks] = await db.select().from(schema.variant).where(eq(schema.variant.shopifyGid, "gid://shopify/ProductVariant/21"));
+    await db.insert(schema.variantCostVersion).values({ storeId: conn.storeId, variantId: socks!.id, effectiveFrom: "2026-01-01", currency: "AUD", productCost: "4.50", source: "manual" });
+    const affected = await profit.ordersWithVariants(conn.storeId, [socks!.id], "2026-01-01");
+    expect(affected).toHaveLength(1);
+    expect(await profit.recalcOrders(conn.storeId, affected)).toMatchObject({ computed: 1, daysAggregated: 4 });
+    const [p] = await db.select().from(schema.orderProfit);
+    expect(money(p!.cogs)).toBe("40.20"); // + 2 socks × 4.50
+    expect(p!.missingComponents).not.toContain("cogs");
+
+    // A new policy version restates refunds onto the order date: the refund day disappears.
+    await db.insert(schema.financialPolicy).values({ storeId: conn.storeId, version: 2, settings: { ...DEFAULT_POLICY, refundDating: "order" } as unknown as Record<string, unknown> });
+    expect(await profit.recalcStore(conn.storeId)).toMatchObject({ computed: 1 });
+    const days = (await db.select({ d: schema.dailyStoreMetrics.localDate }).from(schema.dailyStoreMetrics)).map((r) => r.d).sort();
+    expect(days).toEqual(["2026-10-03", "2026-10-04", "2026-10-12"]);
+    expect(await profit.reconcileAmounts(conn.storeId, "2026-10-01", "2026-10-17")).toEqual([]); // skipped: not event-dated
+
+    await db.insert(schema.financialPolicy).values({ storeId: conn.storeId, version: 3, settings: DEFAULT_POLICY as unknown as Record<string, unknown> });
+    await profit.recalcStore(conn.storeId);
+    await db.execute(sql`update daily_store_metrics set gross_sales = gross_sales + 5 where local_date = '2026-10-03'`);
+    const issues = await profit.reconcileAmounts(conn.storeId, "2026-10-01", "2026-10-17");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ date: "2026-10-03", metric: "gross_sales" });
+    expect(money(issues[0]!.difference)).toBe("-5.00");
+    expect(await db.select().from(schema.reconciliationIssue)).toHaveLength(1);
+  });
+
+  it("an incremental sync recalculates the orders it changed", async () => {
+    const { conn, sync, state } = await setup();
+    await sync.backfill(conn.storeId);
+    const unchanged = await sync.incremental(conn.storeId);
+    expect(unchanged.stats.ordersRecalculated).toBe(0); // same facts → same inputs hash
+    const newer = pagedOrder();
+    newer.updatedAt = "2026-10-12T00:00:00Z";
+    newer.test = true;
+    state.orders = [newer];
+    expect((await sync.incremental(conn.storeId)).stats.ordersRecalculated).toBe(1);
+    const [p] = await db.select().from(schema.orderProfit);
+    expect(p).toMatchObject({ included: false, exclusionReason: "test order" });
+    expect(await db.select().from(schema.dailyStoreMetrics)).toHaveLength(0);
   });
 });
 

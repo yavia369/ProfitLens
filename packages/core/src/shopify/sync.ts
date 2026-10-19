@@ -24,6 +24,7 @@ import {
   type RawProduct,
 } from "@profitlens/shopify";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { ProfitService, type AmountMismatch } from "../profit/service";
 import { clientForStore, type ShopifyDeps, type StoreClient } from "./connection";
 import { refreshCustomerStats, relinkLineItemVariants, upsertOrderFacts, upsertProductFacts } from "./upsert";
 
@@ -39,14 +40,34 @@ export interface SyncStats {
   variants: number;
   costVersionsCreated: number;
   disputes: number;
+  /** Orders whose profit result was recalculated after the sync. */
+  ordersRecalculated: number;
 }
 
-const emptyStats = (): SyncStats => ({ orders: 0, ordersSkippedStale: 0, products: 0, variants: 0, costVersionsCreated: 0, disputes: 0 });
+const emptyStats = (): SyncStats => ({ orders: 0, ordersSkippedStale: 0, products: 0, variants: 0, costVersionsCreated: 0, disputes: 0, ordersRecalculated: 0 });
+
+/** What a sync run changed, so only the affected orders are recalculated. */
+interface Touched {
+  readonly orders: Set<string>;
+  readonly variants: Set<string>;
+}
+const touched = (): Touched => ({ orders: new Set(), variants: new Set() });
 
 type JobKind = "shopify.backfill" | "shopify.incremental" | "shopify.reconcile" | "shopify.order";
 
 export class ShopifySyncService {
-  constructor(private readonly deps: ShopifyDeps) {}
+  private readonly profit: ProfitService;
+
+  constructor(private readonly deps: ShopifyDeps) {
+    this.profit = new ProfitService(deps.db);
+  }
+
+  /** Recalculates orders changed by a sync run, plus orders of variants whose Shopify cost changed. */
+  private async recalcTouched(storeId: string, t: Touched, stats: SyncStats): Promise<void> {
+    const ids = new Set(t.orders);
+    for (const id of await this.profit.ordersWithVariants(storeId, [...t.variants], "1900-01-01")) ids.add(id);
+    stats.ordersRecalculated += (await this.profit.recalcOrders(storeId, [...ids])).computed;
+  }
 
   private now(): Date {
     return this.deps.now?.() ?? new Date();
@@ -81,23 +102,25 @@ export class ShopifySyncService {
     }
   }
 
-  private async saveProducts(sc: StoreClient, products: RawProduct[], stats: SyncStats): Promise<void> {
+  private async saveProducts(sc: StoreClient, products: RawProduct[], stats: SyncStats, t: Touched): Promise<void> {
     const today = todayIn(sc.store.ianaTimezone, this.now());
     for (const raw of products) {
       const r = await upsertProductFacts(this.deps.db, sc.store.id, sc.store.currency, mapProduct(raw), today, COST_SEED_FROM);
       stats.products += 1;
       stats.variants += r.variants;
       stats.costVersionsCreated += r.costVersionsCreated;
+      for (const v of r.costChangedVariantIds) t.variants.add(v);
     }
   }
 
-  private async saveOrders(sc: StoreClient, orders: RawOrder[], stats: SyncStats): Promise<Date | null> {
+  private async saveOrders(sc: StoreClient, orders: RawOrder[], stats: SyncStats, t: Touched): Promise<Date | null> {
     let maxUpdated: Date | null = null;
     for (const raw of orders) {
       const facts = mapOrder(raw, sc.store.ianaTimezone);
       const r = await upsertOrderFacts(this.deps.db, sc.store.id, facts);
       if (r.applied) stats.orders += 1;
       else stats.ordersSkippedStale += 1;
+      if (r.orderId) t.orders.add(r.orderId);
       if (!maxUpdated || facts.order.shopifyUpdatedAt > maxUpdated) maxUpdated = facts.order.shopifyUpdatedAt;
     }
     return maxUpdated;
@@ -117,6 +140,7 @@ export class ShopifySyncService {
     return this.tracked(storeId, "shopify.backfill", async (progress) => {
       const sc = await clientForStore(this.deps, storeId);
       const stats = emptyStats();
+      const t = touched();
       const startedAt = this.now();
       await this.deps.db.update(schema.storeConnection).set({ backfillStartedAt: startedAt }).where(eq(schema.storeConnection.storeId, storeId));
       const sleepOpt = this.deps.sleep ? { sleep: this.deps.sleep } : {};
@@ -125,7 +149,7 @@ export class ShopifySyncService {
       // Products
       const productsOp = await startBulkQuery(sc.client, bulkProductsQuery());
       const productsDone = await waitForBulk(sc.client, productsOp, { ...sleepOpt, onProgress: (s) => void progress(Number(s.objectCount), null, "product objects") });
-      if (productsDone.url) await this.saveProducts(sc, assembleBulkJsonl<RawProduct>(await downloadJsonl(productsDone.url, fetchText)), stats);
+      if (productsDone.url) await this.saveProducts(sc, assembleBulkJsonl<RawProduct>(await downloadJsonl(productsDone.url, fetchText)), stats, t);
 
       // Orders (read_orders alone covers the last 60 days; read_all_orders lifts that limit)
       const ordersOp = await startBulkQuery(sc.client, bulkOrdersQuery("updated_at:>='2000-01-01T00:00:00Z'"));
@@ -142,14 +166,16 @@ export class ShopifySyncService {
             const full = hasTruncatedConnections(o) ? await this.refetchOrder(sc, o.id) : o;
             if (full) batch.push(full);
           }
-          const m = await this.saveOrders(sc, batch, stats);
+          const m = await this.saveOrders(sc, batch, stats, t);
           if (m && (!maxUpdated || m > maxUpdated)) maxUpdated = m;
           await progress(Math.min(i + 100, orders.length), orders.length, "orders saved");
         }
       }
       await relinkLineItemVariants(this.deps.db, storeId);
       await refreshCustomerStats(this.deps.db, storeId);
-      stats.disputes = await this.syncDisputes(sc);
+      stats.disputes = await this.syncDisputes(sc, t);
+      // A backfill touches every order (and seeds costs), so the whole store is recalculated.
+      stats.ordersRecalculated = (await this.profit.recalcStore(storeId)).computed;
 
       const [earliest] = await this.deps.db
         .select({ d: sql<string | null>`min(${schema.order.processedLocalDate})` })
@@ -176,6 +202,7 @@ export class ShopifySyncService {
     return this.tracked(storeId, "shopify.incremental", async () => {
       const sc = await clientForStore(this.deps, storeId);
       const stats = emptyStats();
+      const t = touched();
       const runStartedAt = this.now();
       const ordersSince = new Date((sc.connection.ordersSyncedThrough ?? new Date(runStartedAt.getTime() - 60 * 86_400_000)).getTime() - OVERLAP_MS);
       const productsSince = new Date((sc.connection.productsSyncedThrough ?? new Date(0)).getTime() - OVERLAP_MS);
@@ -187,7 +214,7 @@ export class ShopifySyncService {
           { after, query: `updated_at:>='${productsSince.toISOString()}'` },
           150,
         );
-        await this.saveProducts(sc, data.products.edges.map((e) => e.node), stats);
+        await this.saveProducts(sc, data.products.edges.map((e) => e.node), stats, t);
         if (!data.products.pageInfo.hasNextPage) break;
         after = data.products.pageInfo.endCursor;
       }
@@ -202,7 +229,7 @@ export class ShopifySyncService {
         );
         const batch: RawOrder[] = [];
         for (const e of data.orders.edges) batch.push(hasTruncatedConnections(e.node) ? ((await this.refetchOrder(sc, e.node.id)) ?? e.node) : e.node);
-        const m = await this.saveOrders(sc, batch, stats);
+        const m = await this.saveOrders(sc, batch, stats, t);
         if (m && (!maxUpdated || m > maxUpdated)) maxUpdated = m;
         if (!data.orders.pageInfo.hasNextPage) break;
         after = data.orders.pageInfo.endCursor;
@@ -212,8 +239,9 @@ export class ShopifySyncService {
 
       // Disputes change rarely; refresh at most every 6 hours.
       if (!sc.connection.disputesSyncedAt || runStartedAt.getTime() - sc.connection.disputesSyncedAt.getTime() > 6 * 3600_000) {
-        stats.disputes = await this.syncDisputes(sc);
+        stats.disputes = await this.syncDisputes(sc, t);
       }
+      await this.recalcTouched(storeId, t, stats);
       await this.deps.db
         .update(schema.storeConnection)
         .set({
@@ -232,12 +260,14 @@ export class ShopifySyncService {
       const sc = await clientForStore(this.deps, storeId);
       const stats = emptyStats();
       const raw = await this.refetchOrder(sc, orderGid);
-      if (raw) await this.saveOrders(sc, [raw], stats);
+      const t = touched();
+      if (raw) await this.saveOrders(sc, [raw], stats, t);
+      await this.recalcTouched(storeId, t, stats);
       return { stats };
     });
   }
 
-  private async syncDisputes(sc: StoreClient): Promise<number> {
+  private async syncDisputes(sc: StoreClient, t: Touched): Promise<number> {
     if (!sc.scopes.includes("read_shopify_payments_disputes")) return 0;
     let count = 0;
     for (let after: string | null = null; ; ) {
@@ -260,6 +290,7 @@ export class ShopifySyncService {
           .insert(schema.dispute)
           .values(values)
           .onConflictDoUpdate({ target: [schema.dispute.storeId, schema.dispute.shopifyGid], set: { orderId: values.orderId, status: values.status, reason: values.reason, amount: values.amount, finalizedOn: values.finalizedOn, updatedAt: new Date() } });
+        if (values.orderId) t.orders.add(values.orderId);
         count += 1;
       }
       if (!data.disputes.pageInfo.hasNextPage) return count;
@@ -271,7 +302,10 @@ export class ShopifySyncService {
    * Compares order counts per store-local day with Shopify (closed days only) and records differences.
    * Returns the days that did not match (callers can trigger a targeted re-sync).
    */
-  async reconcileOrderCounts(storeId: string, days = 7): Promise<{ stats: SyncStats; mismatches: { date: string; shopify: number; ours: number }[] }> {
+  async reconcileOrderCounts(
+    storeId: string,
+    days = 7,
+  ): Promise<{ stats: SyncStats; mismatches: { date: string; shopify: number; ours: number }[]; amountMismatches: AmountMismatch[] }> {
     return this.tracked(storeId, "shopify.reconcile", async () => {
       const sc = await clientForStore(this.deps, storeId);
       const tz = sc.store.ianaTimezone;
@@ -292,7 +326,9 @@ export class ShopifySyncService {
           await this.deps.db.insert(schema.reconciliationIssue).values({ storeId, localDate: day, metric: "orders_count", expected: String(data.ordersCount.count), actual: String(n), difference: String(data.ordersCount.count - n) });
         }
       }
-      return { stats: emptyStats(), mismatches };
+      // Amounts: aggregates vs an independent recomputation from the raw ledger (FINANCIAL_MODEL §10).
+      const amountMismatches = await this.profit.reconcileAmounts(storeId, addDays(today, -days), addDays(today, -1));
+      return { stats: emptyStats(), mismatches, amountMismatches };
     });
   }
 }

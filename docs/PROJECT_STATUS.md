@@ -3,10 +3,21 @@
 _Last updated: 2026-10-19_
 
 ## Current phase
-**Phase 4 — Shopify Connection: COMPLETE, awaiting owner approval** (live verification on Luraflo passed 2026-10-19).
-Phases 1–3 approved; Phase 4 approved for build 2026-10-18 (including installing a read-only ProfitLens app on Luraflo).
+**Phase 5 — Finance engine & cost management: IN PROGRESS** (started 2026-10-19).
+Phase 4 approved by the owner on 2026-10-19 ("CONFIRM PHASE 4").
 `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` and `SHOPIFY_SHOP_DOMAIN` are cloud environment variables.
 **Never ask for these values in chat, never print them.**
+
+Phase 5 plan:
+1. Pure engine in `packages/finance/src/engine`: order profit (revenue components, COGS with effective-dated
+   costs and return reversals, shipping/handling rules, transaction fees, chargebacks), dated per store-local day,
+   with completeness and trace; expense allocation per day; FINANCIAL_MODEL §11 test matrix.
+2. Result tables (`order_daily_result`, `order_cogs_line`) and a `ProfitService` in core: load inputs from the DB,
+   recalculate (skipping unchanged inputs), aggregate `daily_store_metrics`, run after every sync.
+3. DB-backed reporting for live stores (dashboard, orders, products, P&L), replacing the 409 state (D-028).
+4. Cost management: product costs (per variant/product, CSV import), shipping and handling rules, payment fee
+   rules, expenses, versioned calculation policy. Every change is audited and triggers recalculation.
+5. Verify on Luraflo against Shopify, tests, docs, report.
 
 ## Fresh-container setup (any new session)
 1. `pg_ctlcluster 16 main start`. If the `profitlens` role is missing (password auth fails):
@@ -64,7 +75,7 @@ Phases 1–3 approved; Phase 4 approved for build 2026-10-18 (including installi
     bulk refund lines (D-031) and disputes scope (D-032). See `docs/INTEGRATIONS.md` "Live verification".
 
 ## In progress
-- None. Waiting for Phase 4 approval.
+- Phase 5 (see plan above).
 
 ## Pending (by phase)
 - Phases 3–9 as per the master brief.
@@ -89,9 +100,9 @@ Phases 1–3 approved; Phase 4 approved for build 2026-10-18 (including installi
 | B5 | Hosting accounts (Postgres, Redis, app host) | Phase 9 |
 
 ## Next tasks
-1. Owner approval of Phase 4.
-2. Phase 5 (after approval): profit engine (order results from ledger + costs + fees + policy), cost management
+1. Phase 5 (in progress): profit engine (order results from ledger + costs + fees + policy), cost management
    pages (product costs, shipping, fees, expenses), DB-backed ReportingDataSource for live stores.
+2. Phase 6 (after approval): Google Ads (needs B4).
 
 ## Test results
 - 2026-10-19 (Phase 4 live): Luraflo verification passed (see above); `pnpm test` 81/81, `pnpm typecheck`,
