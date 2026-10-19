@@ -1,6 +1,7 @@
 import {
   BadgeDollarSign,
   BarChart3,
+  Coins,
   Boxes,
   CreditCard,
   FileSpreadsheet,
@@ -47,6 +48,7 @@ export const NAV: readonly { readonly title: string; readonly items: readonly Na
       { href: "/costs/shipping", label: "Shipping", icon: Truck, storeScoped: true },
       { href: "/costs/fees", label: "Transaction fees", icon: CreditCard, storeScoped: true },
       { href: "/costs/expenses", label: "Expenses", icon: Receipt, storeScoped: true },
+      { href: "/costs/ad-spend", label: "Ad spend", icon: Coins, storeScoped: true },
     ],
   },
   {

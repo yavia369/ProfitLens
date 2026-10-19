@@ -2,6 +2,10 @@ import { FlaskConical, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConnectStoreForm } from "@/components/sync/connect-store-form";
+import { listAdAccounts, listAdConnections } from "@profitlens/core/ads";
+import { AdAccountRow, ConnectGoogleAdsForm } from "@/components/ads/google-ads";
+import { Table, TBody, TH, THead, TR } from "@/components/ui/table";
+import { db } from "@/server/db";
 import { listAccessibleStores } from "@/server/reporting";
 import { requireAppSession } from "@/server/session";
 
@@ -10,6 +14,9 @@ export const metadata = { title: "Stores & integrations" };
 export default async function StoresPage() {
   const session = await requireAppSession();
   const stores = await listAccessibleStores(session.scope);
+  const [connections, accounts] = await Promise.all([listAdConnections(db(), session.scope), listAdAccounts(db(), session.scope)]);
+  const liveStoreOptions = stores.filter((s) => !s.isDemo).map((s) => ({ id: s.id, name: s.name, timezone: s.timezone, currency: s.currency }));
+  const isAdmin = session.scope.role === "owner" || session.scope.role === "admin";
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -51,7 +58,7 @@ export default async function StoresPage() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-          {session.scope.role === "owner" || session.scope.role === "admin" ? <ConnectStoreForm /> : <p>Only workspace owners and admins can connect stores.</p>}
+          {isAdmin ? <ConnectStoreForm /> : <p>Only workspace owners and admins can connect stores.</p>}
           <p className="text-xs">
             Required scopes: read_orders, read_products, read_inventory, read_customers, read_returns, read_shopify_payments_payouts,
             read_shopify_payments_disputes. Add <code className="rounded bg-muted px-1">read_all_orders</code> for history older than 60 days.
@@ -62,13 +69,61 @@ export default async function StoresPage() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Advertising accounts</CardTitle>
-            <CardDescription>Google Ads arrives in phase 6; Meta and TikTok in phase 8.</CardDescription>
+            <CardTitle>Google Ads</CardTitle>
+            <CardDescription>
+              Read-only access through a service account in your Google Cloud project. Spend syncs every 6 hours and re-reads the last 3 days to
+              catch Google&apos;s corrections. Setup guide: <code className="rounded bg-muted px-1">docs/GOOGLE_ADS_SETUP.md</code>. Meta and TikTok: phase 8
+              (until then, enter their spend under Costs → Ad spend).
+            </CardDescription>
           </div>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Google Ads connects through your own Google Cloud project (OAuth). Spend will sync daily with a three-day restatement window. Manual
-          ad-spend entry will always be available as a fallback.
+        <CardContent className="flex flex-col gap-4 text-sm">
+          {connections.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{c.displayName}</span>
+              <Badge variant={c.status === "active" ? "positive" : "negative"}>{c.status === "active" ? "connected" : c.status.replace("_", " ")}</Badge>
+              {c.loginCustomerId ? <span className="text-muted-foreground">via manager {c.loginCustomerId}</span> : null}
+              {c.lastError ? <span className="text-negative">{c.lastError}</span> : null}
+            </div>
+          ))}
+          {accounts.length ? (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Ad account</TH>
+                  <TH>Store</TH>
+                  <TH>Sync</TH>
+                  <TH>Status</TH>
+                  <TH>
+                    <span className="sr-only">Actions</span>
+                  </TH>
+                </TR>
+              </THead>
+              <TBody>
+                {accounts.map(({ a }) => (
+                  <AdAccountRow
+                    key={a.id}
+                    editable={isAdmin}
+                    stores={liveStoreOptions}
+                    account={{
+                      id: a.id,
+                      customerId: a.externalId,
+                      name: a.name,
+                      currency: a.currency,
+                      timezone: a.timezone,
+                      isManager: a.isManager,
+                      accountStatus: a.accountStatus,
+                      storeId: a.storeId,
+                      syncEnabled: a.syncEnabled,
+                      spendSyncedThrough: a.spendSyncedThrough,
+                      lastError: a.lastError,
+                    }}
+                  />
+                ))}
+              </TBody>
+            </Table>
+          ) : null}
+          {isAdmin ? <ConnectGoogleAdsForm reconnect={connections.length > 0} /> : <p className="text-muted-foreground">Only workspace owners and admins can connect Google Ads.</p>}
         </CardContent>
       </Card>
     </div>

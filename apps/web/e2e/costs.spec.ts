@@ -51,6 +51,15 @@ async function seedStore(email: string): Promise<string> {
        values ($1, $2, $3, $4, 'OrderAgreement', now(), $5, 'ORDER', 'PRODUCT', $6, 2, '180', '20', '20', '0')`,
       [storeId, o[0].id, `gid://shopify/Sale/${suffix}`, `gid://shopify/SalesAgreement/${suffix}`, today, `gid://shopify/LineItem/${suffix}`],
     );
+    // A Google Ads account discovered earlier (no usable credentials in tests).
+    const { rows: conn } = await client.query(
+      `insert into ad_connection (organization_id, platform, external_user_id, display_name, auth_type, status) values ($1, 'google_ads', $2, $2, 'service_account', 'active') returning id`,
+      [orgId, `reader-${suffix}@e2e.iam.gserviceaccount.com`],
+    );
+    await client.query(
+      `insert into ad_account (organization_id, connection_id, platform, external_id, name, currency, timezone, account_status) values ($1, $2, 'google_ads', $3, 'E2E Google Ads', 'AUD', $4, 'ENABLED')`,
+      [orgId, conn[0].id, String(1000000000 + Math.floor(Math.random() * 8999999999)).slice(0, 10), TZ],
+    );
     return storeId;
   } finally {
     await client.end();
@@ -138,4 +147,28 @@ test("configure costs for a connected store and see profit recalculated", async 
   await page.goto(`/orders?${q}&preset=last_7_days`);
   await expect(page.getByRole("cell", { name: "#E2E1" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "$108.50" })).toBeVisible();
+
+  // Manual ad spend (a channel without an API connection) shows up in the dashboard.
+  await page.goto(`/costs/ad-spend?${q}`);
+  await expect(page.getByText("No ad account is syncing to this store yet.")).toBeVisible();
+  await page.getByRole("textbox", { name: "Amount" }).fill("40");
+  await page.getByRole("textbox", { name: "Note (optional)" }).fill("Meta invoice");
+  await page.getByRole("button", { name: "Add spend" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Meta invoice" })).toBeVisible();
+  await page.goto(`/dashboard?${q}&preset=last_7_days&compare=none`);
+  await expect(page.getByText("Meta (manual entries)")).toBeVisible();
+  await expect(page.getByText("$40.00").first()).toBeVisible();
+
+  // Google Ads: the key is validated before anything is sent to Google.
+  await page.goto("/settings/stores");
+  await page.getByLabel("Service account key (JSON)").fill('{"type": "authorized_user"}');
+  await page.getByRole("button", { name: "Update key" }).click(); // a connection exists (seeded)
+  await expect(page.getByRole("alert").filter({ hasText: "This is not a service account key" })).toBeVisible();
+  // Mapping an account to the store saves it and reports why the first import could not run.
+  await page.getByLabel("Store for E2E Google Ads").selectOption({ label: "E2E Boutique" });
+  await expect(page.getByRole("alert").filter({ hasText: "Saved, but the first import failed: Google Ads connection has no stored credentials." })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Store for E2E Google Ads")).toHaveValue(storeId);
+  await expect(page.getByLabel("Sync")).toBeChecked();
 });

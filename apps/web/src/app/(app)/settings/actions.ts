@@ -1,13 +1,15 @@
 "use server";
 
+import { AdsSyncService, connectGoogleAdsServiceAccount, GoogleAdsError, mapAdAccount } from "@profitlens/core/ads";
 import { enqueueBackfill, enqueueIncremental, QUEUES } from "@profitlens/core/jobs";
 import { connectStoreWithClientCredentials, ConnectionError } from "@profitlens/core/shopify";
-import { assertRole, assertStoresInScope, TenantAccessError } from "@profitlens/db";
+import { assertRole, assertStoresInScope, schema, TenantAccessError } from "@profitlens/db";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { requireAppSession } from "@/server/session";
-import { jobs, shopifyDeps } from "@/server/shopify";
+import { adsDeps, jobs, shopifyDeps } from "@/server/shopify";
 
 export interface ActionState {
   ok: boolean;
@@ -66,4 +68,63 @@ export async function reconcileAction(storeId: string): Promise<ActionState> {
   await jobs().send(QUEUES.reconcile, { storeId }, { singletonKey: storeId });
   revalidatePath("/settings/sync");
   return { ok: true, message: "Reconciliation queued." };
+}
+
+// ---------------------------------------------------------------- Google Ads
+
+function adsError(e: unknown): ActionState {
+  if (e instanceof GoogleAdsError || e instanceof TenantAccessError) return { ok: false, message: e.message };
+  console.error("google ads action", e);
+  return { ok: false, message: "Unexpected error talking to Google Ads. Nothing was changed." };
+}
+
+/** Imports spend for one account now (seconds, even for the 3-year history) so the user sees the result. */
+async function syncNow(accountId: string, full = false): Promise<string> {
+  const r = await new AdsSyncService(adsDeps()).syncAccount(accountId, { full });
+  return `Imported ${r.stats.rows} campaign-day rows (${r.from} to ${r.to}).`;
+}
+
+export async function connectGoogleAdsAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const session = await requireAppSession();
+  const keyJson = String(form.get("keyJson") ?? "").trim();
+  if (!keyJson) return { ok: false, message: "Paste the service account key (JSON)." };
+  try {
+    const r = await connectGoogleAdsServiceAccount(adsDeps(), session.scope, { keyJson, loginCustomerId: String(form.get("loginCustomerId") ?? "") || null });
+    revalidatePath("/settings/stores");
+    const n = r.accounts.filter((a) => !a.isManager).length;
+    return { ok: true, message: `Connected as ${r.serviceAccountEmail}. Found ${n} ad account${n === 1 ? "" : "s"} — choose the store each one belongs to.` };
+  } catch (e) {
+    return adsError(e);
+  }
+}
+
+export async function mapAdAccountAction(accountId: string, storeId: string | null, syncEnabled: boolean): Promise<ActionState> {
+  const session = await requireAppSession();
+  try {
+    const r = await mapAdAccount(db(), session.scope, accountId, { storeId, syncEnabled });
+    revalidatePath("/", "layout");
+    if (!r.needsBackfill) return { ok: true, message: "Saved." };
+    try {
+      return { ok: true, message: `Saved. ${await syncNow(accountId, true)}` };
+    } catch (e) {
+      // The mapping is kept; the scheduled sync retries, and "Sync now" can be used after fixing access.
+      return { ok: false, message: `Saved, but the first import failed: ${adsError(e).message}` };
+    }
+  } catch (e) {
+    return adsError(e);
+  }
+}
+
+export async function syncAdAccountAction(accountId: string): Promise<ActionState> {
+  const session = await requireAppSession();
+  assertRole(session.scope, "editor");
+  try {
+    const [acct] = await db().select({ org: schema.adAccount.organizationId }).from(schema.adAccount).where(eq(schema.adAccount.id, accountId));
+    if (acct?.org !== session.scope.organizationId) return { ok: false, message: "Ad account not found." };
+    const message = await syncNow(accountId);
+    revalidatePath("/", "layout");
+    return { ok: true, message };
+  } catch (e) {
+    return adsError(e);
+  }
 }

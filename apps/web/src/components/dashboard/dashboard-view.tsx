@@ -206,11 +206,11 @@ export function DashboardView() {
               display: formatMoney(c.spend, data.store.currency),
               magnitude: Number(c.spend),
               note:
-                c.platformRoas !== null
+                (c.platformRoas !== null
                   ? `Platform-reported ROAS ${formatRatio(c.platformRoas)} · ${c.source === "api" ? "synced" : "manual entry"}`
                   : c.source === "manual"
                     ? "Manual entries — no platform conversion data"
-                    : "No conversion data reported",
+                    : "No conversion data reported") + (c.timezoneApproximation ? " · account days are in another time zone (mapped date to date)" : ""),
             }))}
           />
           <OrdersChart series={data.series} granularity={data.granularity} />

@@ -26,6 +26,7 @@ import {
   type ExpenseFormInput,
   type ShippingRuleFormInput,
 } from "@profitlens/core/profit";
+import { deleteManualSpend, saveManualSpend, type ManualPlatform } from "@profitlens/core/ads";
 import { TenantAccessError, type Database, type OrgScope } from "@profitlens/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -310,4 +311,41 @@ export async function savePolicyAction(_prev: ActionState | null, form: FormData
   );
   if (!state.ok) return state;
   return { ok: true, message: state.message ? `Saved as version ${version}.${state.message}` : "No changes to save." };
+}
+
+// ---------------------------------------------------------------- manual ad spend (applied on read: no recalculation)
+
+export async function saveManualSpendAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const storeId = str(form, "storeId");
+  let days = 0;
+  const state = await change(
+    storeId,
+    async (database, scope) => {
+      days = (
+        await saveManualSpend(database, scope, storeId, {
+          platform: str(form, "platform") as ManualPlatform,
+          from: str(form, "from"),
+          to: str(form, "spread") === "range" ? str(form, "to") || null : null,
+          amount: str(form, "amount"),
+          currency: str(form, "currency"),
+          note: str(form, "note") || null,
+          adjustment: bool(form, "adjustment"),
+        })
+      ).days;
+      return { affectedOrderIds: [] };
+    },
+    "",
+  );
+  return state.ok ? { ok: true, message: days > 1 ? `Saved, spread over ${days} days.` : "Saved." } : state;
+}
+
+export async function deleteManualSpendAction(storeId: string, entryId: string): Promise<ActionState> {
+  return change(
+    storeId,
+    async (database, scope) => {
+      await deleteManualSpend(database, scope, storeId, [entryId]);
+      return { affectedOrderIds: [] };
+    },
+    "Entry deleted.",
+  );
 }

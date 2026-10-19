@@ -1,5 +1,6 @@
 import "server-only";
 import { getServerEnv } from "@profitlens/config";
+import type { AdsDeps } from "@profitlens/core/ads";
 import type { JobSender } from "@profitlens/core/jobs";
 import type { ShopifyDeps } from "@profitlens/core/shopify";
 import { PgBoss } from "pg-boss";
@@ -21,4 +22,10 @@ export function jobs(): JobSender {
     return boss;
   })();
   return { send: async (name, data, options) => (await g.__profitlensBoss!).send(name, data ?? null, options ?? {}) };
+}
+
+/** Dependencies for Google Ads services (same key ring as Shopify credentials). */
+export function adsDeps(): AdsDeps {
+  const env = getServerEnv();
+  return { db: db(), keyring: { keys: env.ENCRYPTION_KEYS, activeKid: env.ENCRYPTION_ACTIVE_KID } };
 }
