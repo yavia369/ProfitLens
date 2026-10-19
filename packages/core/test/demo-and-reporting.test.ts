@@ -1,7 +1,7 @@
-import { dec, sum, sumComponents, ZERO } from "@profitlens/finance";
+import { dec, sum, sumComponents, ZERO, type DateRange } from "@profitlens/finance";
 import { describe, expect, it } from "vitest";
 import { DemoDataSource, DEMO_STORE } from "../src/demo/index";
-import { ReportingService, type DateRange, type ReportingDataSource } from "../src/index";
+import { ReportingService, type ReportingDataSource } from "../src/index";
 
 // Fixed clock: 2026-10-18 14:00 Sydney (AEDT, UTC+11).
 const NOW = new Date("2026-10-18T03:00:00Z");
