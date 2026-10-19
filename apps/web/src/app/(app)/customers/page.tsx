@@ -1,14 +1,8 @@
-import { PlannedPage } from "@/components/planned-page";
+import type { Metadata } from "next";
+import { CustomersView } from "@/components/reports/customers-view";
 
-export const metadata = { title: "Customers" };
+export const metadata: Metadata = { title: "Customers" };
 
-export default function Page() {
-  return (
-    <PlannedPage
-      title="Customers"
-      phase={7}
-      summary="Retention and lifetime value, marked as observed or estimated."
-      items={["Returning customer and repeat purchase rates", "Observed lifetime revenue and gross profit per customer", "First-order-month cohort tables", "Blended CAC and LTV:CAC with the method shown"]}
-    />
-  );
+export default function CustomersPage() {
+  return <CustomersView />;
 }

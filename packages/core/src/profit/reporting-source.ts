@@ -10,8 +10,10 @@ import {
   worstStatus,
   ZERO,
   type CostStatus as EngineCostStatus,
+  type CustomerActivityRow,
   type DailyComponents,
   type DateRange,
+  type LocalDate,
   type ExpenseInput,
   type FxLookup,
 } from "@profitlens/finance";
@@ -21,6 +23,7 @@ import type {
   AdChannelSpend,
   BreakdownLine,
   CostStatus,
+  CustomerActivity,
   OrderDetail,
   OrderQuery,
   OrderRow,
@@ -72,6 +75,42 @@ export class DbReportingDataSource implements ReportingDataSource {
     const s = await this.getStore(storeId);
     if (!s) throw new Error("store not accessible");
     return s;
+  }
+
+  async getCustomerActivity(storeId: string, end: LocalDate): Promise<CustomerActivity> {
+    await this.store(storeId);
+    const [res, [conn]] = await Promise.all([
+      // order_daily_result only holds orders included by the policy; guest orders group under a null customer.
+      this.db.execute(sql`
+        select o.customer_id, c.first_order_local_date::text as first_order_date, r.local_date::text as date,
+          sum(r.orders_count)::int as orders, sum(r.revenue)::text as revenue, sum(r.cogs)::text as cogs,
+          sum(r.revenue_missing_cogs)::text as missing
+        from order_daily_result r
+        join "order" o on o.id = r.order_id
+        left join customer c on c.id = o.customer_id
+        where r.store_id = ${storeId} and r.local_date <= ${end}
+        group by o.customer_id, c.first_order_local_date, r.local_date`),
+      this.db
+        .select({ historyStart: schema.storeConnection.historyStart, scopes: schema.storeConnection.grantedScopes })
+        .from(schema.storeConnection)
+        .where(eq(schema.storeConnection.storeId, storeId)),
+    ]);
+    type Row = { customer_id: string | null; first_order_date: string | null; date: string; orders: number; revenue: string; cogs: string; missing: string };
+    const rows: CustomerActivityRow[] = (res.rows as Row[]).map((r) => ({
+      customerId: r.customer_id,
+      firstOrderDate: r.first_order_date,
+      date: r.date,
+      ordersPlaced: r.orders,
+      revenue: r.revenue,
+      cogs: r.cogs,
+      revenueMissingCogs: r.missing,
+    }));
+    return {
+      rows,
+      historyStart: conn?.historyStart ?? null,
+      // Without read_all_orders Shopify only returns the last 60 days, so earlier customers look new.
+      historyComplete: (conn?.scopes ?? "").split(",").map((x) => x.trim()).includes("read_all_orders"),
+    };
   }
 
   private async fxFor(currency: string, currencies: readonly string[], range: DateRange): Promise<FxLookup> {

@@ -41,6 +41,11 @@ export function formatRatio(value: NumericString | null): string {
   return `${new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(asIntl(value))}×`;
 }
 
+export function formatDecimal(value: NumericString | null, digits = 2): string {
+  if (value === null) return "—";
+  return new Intl.NumberFormat(LOCALE, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(asIntl(value));
+}
+
 export function formatCount(value: NumericString | number | null): string {
   if (value === null) return "—";
   return new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 }).format(typeof value === "number" ? value : asIntl(value));

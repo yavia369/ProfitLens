@@ -404,9 +404,20 @@ describe("Shopify connection and sync (mock Shopify, real Postgres)", () => {
     expect(products.find((x) => x.sku === "SNK-8")).toMatchObject({ unitsSold: 1, cogs: "31.200000", costStatus: "actual" });
     expect(products.find((x) => x.sku === "SOCK")).toMatchObject({ unitsSold: 2, cogs: "0.000000", costStatus: "missing" });
 
+    // Customers: the one customer is new in October; event-dated revenue (with the refund) matches the order.
+    const activity = await source.getCustomerActivity(conn.storeId, range.end);
+    expect(activity.historyComplete).toBe(false); // read_all_orders not granted
+    expect(sum(activity.rows.map((r) => dec(r.revenue))).toFixed(2)).toBe(money(p!.revenue));
+    expect(activity.rows.every((r) => r.customerId !== null && r.firstOrderDate === "2026-10-03")).toBe(true);
+    const customers = (await new ReportingService(source).customers(conn.storeId, range))!;
+    expect(customers.period).toMatchObject({ customers: 1, newCustomers: 1, returningCustomers: 0, orders: 1, guestOrders: 0, cac: "40.000000" });
+    expect(customers.cohorts.map((c) => [c.month, c.customers])).toEqual([["2026-10", 1]]);
+    expect(customers.toDate.revenueMissingCogsShare).not.toBeNull(); // SOCK has no cost
+
     // Another organization sees nothing and cannot read the store.
     const other = await seedOrg("other");
     const foreign = new DbReportingDataSource(db, other.organizationId);
+    await expect(foreign.getCustomerActivity(conn.storeId, range.end)).rejects.toThrow();
     expect(await foreign.listStores()).toEqual([]);
     await expect(foreign.getDailyComponents(conn.storeId, range)).rejects.toThrow();
     await expect(foreign.listOrders(conn.storeId, { range })).rejects.toThrow();

@@ -5,6 +5,7 @@ import {
   eachDay,
   toMoneyString,
   ZERO,
+  type CustomerActivityRow,
   type DailyComponents,
   type DateRange,
   type LocalDate,
@@ -13,6 +14,7 @@ import type {
   AdChannelSpend,
   BreakdownLine,
   CostStatus,
+  CustomerActivity,
   OrderDetail,
   OrderQuery,
   OrderRow,
@@ -275,6 +277,37 @@ export class DemoDataSource implements ReportingDataSource {
       breakdown: lines,
       memo: { taxes: m(t.total("taxes")), giftCardSales: m(t.total("giftCardSales")) },
     };
+  }
+
+  async getCustomerActivity(storeId: string, end: LocalDate): Promise<CustomerActivity> {
+    if (storeId !== DEMO_STORE.id) return { rows: [], historyStart: null, historyComplete: true };
+    const h = this.data();
+    const acc = new Map<string, { customerId: string; date: LocalDate; orders: number; revenue: Decimal; cogs: Decimal; missing: Decimal }>();
+    for (const date of eachDay({ start: DEMO_STORE.historyStart, end: end < h.today ? end : h.today })) {
+      for (const e of h.eventsByDate.get(date) ?? []) {
+        const customerId = h.ordersById.get(e.orderId)!.customerId;
+        const key = `${customerId}|${date}`;
+        const a = acc.get(key) ?? { customerId, date, orders: 0, revenue: ZERO, cogs: ZERO, missing: ZERO };
+        acc.set(key, {
+          ...a,
+          orders: a.orders + e.orders,
+          revenue: a.revenue.plus(eventRevenue(e)),
+          cogs: a.cogs.plus(e.cogs),
+          missing: a.missing.plus(e.revenueMissingCogs),
+        });
+      }
+    }
+    const rows: CustomerActivityRow[] = [...acc.values()].map((a) => ({
+      customerId: a.customerId,
+      firstOrderDate: h.customerFirstDate.get(a.customerId)!,
+      date: a.date,
+      ordersPlaced: a.orders,
+      revenue: m(a.revenue),
+      cogs: m(a.cogs),
+      revenueMissingCogs: m(a.missing),
+    }));
+    // The demo store opened on its history start, so its history is complete.
+    return { rows, historyStart: DEMO_STORE.historyStart, historyComplete: true };
   }
 
   async listProducts(storeId: string, range: DateRange): Promise<ProductRow[]> {

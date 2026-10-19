@@ -52,7 +52,7 @@ export function BarList({ title, description, items, color, emptyText }: { title
                 <span className="shrink-0 font-medium tabular">{i.display}</span>
               </div>
               <div className="h-2 w-full rounded-full bg-muted" title={`${i.label}: ${i.display}`}>
-                <div className="h-2 rounded-full transition-[width]" style={{ width: `${max > 0 ? Math.max((i.magnitude / max) * 100, 1.5) : 0}%`, background: color }} />
+                <div className="h-2 rounded-full transition-[width]" style={{ width: `${max > 0 && i.magnitude > 0 ? Math.max((i.magnitude / max) * 100, 1.5) : 0}%`, background: color }} />
               </div>
               {i.note ? <p className="mt-1 text-xs text-subtle">{i.note}</p> : null}
             </li>

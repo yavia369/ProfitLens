@@ -140,6 +140,26 @@ describe("reporting service", () => {
     expect(await service.storeComparison([{ storeId: "demo", range: a }, { storeId: "nope", range: a }])).toBeNull();
   });
 
+  it("customer analytics agree with the daily components and the order list", async () => {
+    const range = { start: "2026-09-01", end: "2026-09-30" };
+    const c = (await service.customers("demo", range))!;
+    const totals = sumComponents(await source.getDailyComponents("demo", range));
+    expect(c.period.newCustomers).toBe(totals.newCustomers);
+    expect(c.period.orders).toBe(totals.ordersCount);
+    expect(dec(c.period.revenueNew).plus(dec(c.period.revenueReturning)).plus(dec(c.period.revenueGuests)).toFixed(6)).toBe(totals.revenue.toFixed(6));
+    expect(c.period.returningCustomers).toBeGreaterThan(0);
+    expect(dec(c.period.cac!).toFixed(6)).toBe(totals.adSpend.div(totals.newCustomers).toFixed(6));
+    expect(c.history).toEqual({ start: DEMO_STORE.historyStart, complete: true });
+    // Cohorts: the 12 months ending in September; everyone in a cohort ordered in its first month.
+    expect(c.cohorts).toHaveLength(12);
+    expect(c.cohorts.at(-1)!.month).toBe("2026-09");
+    for (const cohort of c.cohorts) expect(dec(cohort.cells[0]!.retention).toFixed(2)).toBe("1.00");
+    const all = (await service.customers("demo", { start: DEMO_STORE.historyStart, end: "2026-10-18" }))!;
+    const life = sumComponents(await source.getDailyComponents("demo", { start: DEMO_STORE.historyStart, end: "2026-10-18" }));
+    expect(all.toDate.customers).toBe(life.newCustomers);
+    expect(dec(all.toDate.revenuePerCustomer!).toFixed(6)).toBe(life.revenue.div(all.toDate.customers).toFixed(6));
+  });
+
   it("returns null for unknown stores", async () => {
     expect(await service.dashboard("nope", { start: "2026-10-01", end: "2026-10-02" }, "none")).toBeNull();
   });

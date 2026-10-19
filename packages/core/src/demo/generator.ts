@@ -59,6 +59,8 @@ export interface DemoOrder {
   readonly shippingCharged: Decimal;
   readonly tip: Decimal;
   readonly isNewCustomer: boolean;
+  /** Synthetic customer id (no personal data); assigned in order sequence by generateDemoHistory. */
+  readonly customerId: string;
   readonly refund: DemoRefund | null;
   readonly chargeback: DemoChargeback | null;
 }
@@ -211,6 +213,7 @@ function generateDay(date: LocalDate, firstNumber: number): DemoOrder[] {
       shippingCharged,
       tip,
       isNewCustomer,
+      customerId: "",
       refund,
       chargeback,
     });
@@ -296,6 +299,7 @@ export interface DemoHistory {
   readonly eventsByDate: ReadonlyMap<LocalDate, readonly DemoEvent[]>;
   readonly today: LocalDate;
   readonly generatedAt: Date;
+  readonly customerFirstDate: ReadonlyMap<string, LocalDate>;
 }
 
 /** Generates the full history from DEMO_STORE.historyStart through today (store timezone). */
@@ -303,10 +307,27 @@ export function generateDemoHistory(now: Date = new Date()): DemoHistory {
   const today = todayIn(DEMO_STORE.timezone, now);
   const orders: DemoOrder[] = [];
   let next = 1001;
+  // Customers come from their own stream so that adding them never shifts any other generated value.
+  const customerRand = prng(hashString(`${DEMO_STORE.id}:customers`));
+  const customers: string[] = [];
+  const customerFirstDate = new Map<string, LocalDate>();
   for (const date of eachDay({ start: DEMO_STORE.historyStart, end: today })) {
     const day = generateDay(date, next).filter((o) => o.processedAt <= now);
     next += day.length;
-    orders.push(...day);
+    for (const o of day) {
+      // The very first order cannot be from a returning customer.
+      const isNewCustomer = o.isNewCustomer || customers.length === 0;
+      let customerId: string;
+      if (isNewCustomer) {
+        customerId = `demo-c-${customers.length + 1}`;
+        customers.push(customerId);
+        customerFirstDate.set(customerId, o.localDate);
+      } else {
+        // Returning: an earlier customer, biased towards recent ones (√ of a uniform draw).
+        customerId = customers[Math.min(customers.length - 1, Math.floor(customers.length * Math.sqrt(customerRand())))]!;
+      }
+      orders.push({ ...o, customerId, isNewCustomer });
+    }
   }
   const eventsByDate = new Map<LocalDate, DemoEvent[]>();
   for (const o of orders) {
@@ -317,7 +338,7 @@ export function generateDemoHistory(now: Date = new Date()): DemoHistory {
       else eventsByDate.set(e.localDate, [e]);
     }
   }
-  return { orders, ordersById: new Map(orders.map((o) => [o.id, o])), eventsByDate, today, generatedAt: now };
+  return { orders, ordersById: new Map(orders.map((o) => [o.id, o])), eventsByDate, today, generatedAt: now, customerFirstDate };
 }
 
 /** Ad spend per channel for a day: a share of that day's revenue with noise (synthetic). */

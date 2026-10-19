@@ -1,4 +1,4 @@
-import type { DailyComponents, DateRange, MoneyString } from "@profitlens/finance";
+import type { CustomerActivityRow, DailyComponents, DateRange, LocalDate, MoneyString } from "@profitlens/finance";
 
 export type CostStatus = "actual" | "rule" | "manual" | "estimated" | "missing";
 
@@ -97,6 +97,14 @@ export interface ProductRow {
   readonly costStatus: CostStatus;
 }
 
+export interface CustomerActivity {
+  readonly rows: readonly CustomerActivityRow[];
+  /** Earliest stored order date. */
+  readonly historyStart: LocalDate | null;
+  /** All of the store's orders are stored (false e.g. without Shopify's read_all_orders: only 60 days). */
+  readonly historyComplete: boolean;
+}
+
 /** Read-side data access for reports. Implemented by the demo adapter now, the database later. */
 export interface ReportingDataSource {
   getStore(storeId: string): Promise<StoreSummary | null>;
@@ -107,4 +115,10 @@ export interface ReportingDataSource {
   listOrders(storeId: string, query: OrderQuery): Promise<{ rows: OrderRow[]; total: number }>;
   getOrder(storeId: string, orderId: string): Promise<OrderDetail | null>;
   listProducts(storeId: string, range: DateRange): Promise<ProductRow[]>;
+  /**
+   * Per customer and store-local day, from the start of stored history through `end` (orders excluded by policy
+   * are left out). When the history is incomplete (`historyComplete` false), customers who first ordered before
+   * `historyStart` look new.
+   */
+  getCustomerActivity(storeId: string, end: LocalDate): Promise<CustomerActivity>;
 }

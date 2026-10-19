@@ -83,6 +83,14 @@ test.describe.serial("auth and dashboard", () => {
     await expect(page.getByRole("cell", { name: "Google Ads" })).toBeVisible();
     await shot(page, "pnl");
 
+    await page.goto("/customers?store=demo&preset=last_30_days");
+    await expect(page.getByRole("heading", { name: "Customers" })).toBeVisible();
+    await expect(page.getByText("Revenue per customer").first()).toBeVisible();
+    await expect(page.getByRole("table", { name: /by cohort and months since first order/ })).toBeVisible();
+    await page.getByLabel("Cohort measure").selectOption("retention");
+    await expect(page.getByRole("cell", { name: "100%" }).first()).toBeVisible();
+    await shot(page, "customers");
+
     await page.goto("/settings/policy");
     await expect(page.getByText("Taxes collected are a liability, never revenue.")).toBeVisible();
     await page.goto("/costs/products");

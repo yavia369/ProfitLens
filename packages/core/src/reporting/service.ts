@@ -1,5 +1,6 @@
 import {
   addTotals,
+  customerAnalytics,
   bucketKey,
   comparisonRange,
   profitBridge,
@@ -17,8 +18,9 @@ import {
   type ComponentTotals,
   type DailyComponents,
   type DateRange,
-  type Decimal,
+  Decimal,
   type Granularity,
+  type LocalDate,
   type MetricKey,
 } from "@profitlens/finance";
 import type { AdChannelSpend, ReportingDataSource, StoreSummary } from "./types";
@@ -68,6 +70,54 @@ export interface DashboardPayload {
     readonly steps: readonly { readonly key: string; readonly label: string; readonly effect: string; readonly description: string }[];
   } | null;
   readonly generatedAt: string;
+}
+
+/** Customer analytics (Customers page). Money as decimal strings; ratios as fractions; every figure observed, not predicted. */
+export interface CustomerReport {
+  readonly store: StoreSummary;
+  readonly range: DateRange;
+  readonly history: { readonly start: LocalDate | null; readonly complete: boolean };
+  readonly period: {
+    readonly customers: number;
+    readonly newCustomers: number;
+    readonly returningCustomers: number;
+    readonly returningRate: string | null;
+    readonly orders: number;
+    readonly ordersPerCustomer: string | null;
+    readonly revenueNew: string;
+    readonly revenueReturning: string;
+    readonly revenueGuests: string;
+    readonly guestOrders: number;
+    /** Ad spend in the range (all channels). */
+    readonly adSpend: string;
+    /** Blended CAC: ad spend ÷ new customers in the range (the dashboard's CAC). */
+    readonly cac: string | null;
+  };
+  readonly toDate: {
+    readonly customers: number;
+    readonly repeatCustomers: number;
+    readonly repeatRate: string | null;
+    readonly ordersPerCustomer: string | null;
+    readonly revenuePerCustomer: string | null;
+    readonly grossProfitPerCustomer: string | null;
+    /** Share of revenue to date whose products have no cost: gross-profit LTV is overstated by their COGS. */
+    readonly revenueMissingCogsShare: string | null;
+    /** Gross-profit LTV ÷ blended CAC of the range. */
+    readonly ltvToCac: string | null;
+  };
+  readonly cohorts: readonly {
+    readonly month: string;
+    readonly customers: number;
+    readonly revenueMissingCogs: string;
+    readonly cells: readonly {
+      readonly offset: number;
+      readonly activeCustomers: number;
+      readonly retention: string;
+      readonly cumulativeRevenuePerCustomer: string;
+      readonly cumulativeGrossProfitPerCustomer: string;
+      readonly partial: boolean;
+    }[];
+  }[];
 }
 
 function bucketize(days: readonly DailyComponents[], granularity: Granularity): Map<string, DailyComponents[]> {
@@ -163,6 +213,54 @@ export class ReportingService {
         ? { start: toMoneyString(b.start), end: toMoneyString(b.end), steps: b.steps.map((x) => ({ key: x.key, label: x.label, effect: toMoneyString(x.effect), description: x.description })) }
         : null,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  async customers(storeId: string, range: DateRange, cohortMonths = 12): Promise<CustomerReport | null> {
+    const store = await this.source.getStore(storeId);
+    if (!store) return null;
+    const [activity, days] = await Promise.all([this.source.getCustomerActivity(storeId, range.end), this.source.getDailyComponents(storeId, range)]);
+    const a = customerAnalytics(activity.rows, range, cohortMonths);
+    const totals = sumComponents(days);
+    const cac = METRICS.cac.compute({ ...totals, newCustomers: a.period.newCustomers });
+    const t = a.toDate;
+    return {
+      store,
+      range,
+      history: { start: activity.historyStart, complete: activity.historyComplete },
+      period: {
+        ...a.period,
+        returningRate: s(a.period.returningRate),
+        ordersPerCustomer: s(a.period.ordersPerCustomer),
+        revenueNew: toMoneyString(a.period.revenueNew),
+        revenueReturning: toMoneyString(a.period.revenueReturning),
+        revenueGuests: toMoneyString(a.period.revenueGuests),
+        adSpend: toMoneyString(totals.adSpend),
+        cac: s(cac),
+      },
+      toDate: {
+        customers: t.customers,
+        repeatCustomers: t.repeatCustomers,
+        repeatRate: s(t.repeatRate),
+        ordersPerCustomer: s(t.ordersPerCustomer),
+        revenuePerCustomer: s(t.revenuePerCustomer),
+        grossProfitPerCustomer: s(t.grossProfitPerCustomer),
+        revenueMissingCogsShare: s(t.revenue.isZero() ? null : t.revenueMissingCogs.div(t.revenue)),
+        ltvToCac: s(t.grossProfitPerCustomer && cac && !cac.isZero() ? t.grossProfitPerCustomer.div(cac) : null),
+      },
+      cohorts: a.cohorts.map((c) => ({
+        month: c.month,
+        customers: c.customers,
+        revenueMissingCogs: toMoneyString(c.revenueMissingCogs),
+        cells: c.cells.map((x) => ({
+          offset: x.offset,
+          activeCustomers: x.activeCustomers,
+          retention: toMoneyString(new Decimal(x.activeCustomers).div(c.customers)),
+          cumulativeRevenuePerCustomer: toMoneyString(x.cumulativeRevenuePerCustomer),
+          cumulativeGrossProfitPerCustomer: toMoneyString(x.cumulativeGrossProfitPerCustomer),
+          partial: x.partial,
+        })),
+      })),
     };
   }
 
