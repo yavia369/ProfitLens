@@ -2,12 +2,13 @@
 
 import { RefreshCw } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
-import { connectGoogleAdsAction, mapAdAccountAction, syncAdAccountAction, type ActionState } from "@/app/(app)/settings/actions";
+import { connectGoogleAdsAction, connectMetaAction, mapAdAccountAction, syncAdAccountAction, type ActionState } from "@/app/(app)/settings/actions";
 import { FormMessage } from "@/components/costs/form-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label, NativeSelect } from "@/components/ui/input";
 import { TD, TR } from "@/components/ui/table";
+import { canSyncAccount } from "./platforms";
 
 export function ConnectGoogleAdsForm({ reconnect }: { reconnect: boolean }) {
   const [state, action, pending] = useActionState<ActionState | null, FormData>(connectGoogleAdsAction, null);
@@ -43,6 +44,7 @@ export function ConnectGoogleAdsForm({ reconnect }: { reconnect: boolean }) {
 
 export interface AdAccountView {
   id: string;
+  platform: string;
   customerId: string;
   name: string;
   currency: string;
@@ -55,7 +57,8 @@ export interface AdAccountView {
   lastError: string | null;
 }
 
-const formatCustomerId = (id: string) => (/^\d{10}$/.test(id) ? `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}` : id);
+const formatAccountId = (platform: string, id: string) =>
+  platform === "meta" ? `act_${id}` : /^\d{10}$/.test(id) ? `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}` : id;
 
 /** One ad account: which store its spend belongs to, whether it syncs, and its sync state. */
 export function AdAccountRow({ account, stores, editable }: { account: AdAccountView; stores: readonly { id: string; name: string; timezone: string; currency: string }[]; editable: boolean }) {
@@ -68,24 +71,26 @@ export function AdAccountRow({ account, stores, editable }: { account: AdAccount
     start(async () => {
       setState(await mapAdAccountAction(account.id, nextStore || null, nextSync && nextStore !== ""));
     });
-  const closed = account.accountStatus !== null && account.accountStatus !== "ENABLED";
+  const closed = !canSyncAccount(account.platform, account.accountStatus);
   return (
     <TR>
       <TD>
         <p className="font-medium">{account.name}</p>
         <p className="text-xs text-muted-foreground">
-          {formatCustomerId(account.customerId)} · {account.currency} · {account.timezone}
+          {formatAccountId(account.platform, account.customerId)} · {account.currency} · {account.timezone}
         </p>
         {store && store.timezone !== account.timezone ? (
           <p className="text-xs text-warning">Time zone differs from the store&apos;s: days are mapped date to date.</p>
         ) : null}
-        {store && store.currency !== account.currency ? <p className="text-xs text-warning">Spend in {account.currency} needs exchange rates to {store.currency} (not available yet).</p> : null}
+        {store && store.currency !== account.currency ? (
+          <p className="text-xs text-muted-foreground">Spend in {account.currency} is converted to {store.currency} at each day&apos;s ECB reference rate.</p>
+        ) : null}
       </TD>
       <TD>
         {account.isManager ? (
           <Badge variant="neutral">manager — map the accounts below it</Badge>
         ) : closed ? (
-          <Badge variant="neutral">{account.accountStatus!.toLowerCase()}</Badge>
+          <Badge variant="neutral">{(account.accountStatus ?? "unknown").toLowerCase().replace(/_/g, " ")}</Badge>
         ) : (
           <NativeSelect
             aria-label={`Store for ${account.name}`}
@@ -136,5 +141,40 @@ export function AdAccountRow({ account, stores, editable }: { account: AdAccount
         ) : null}
       </TD>
     </TR>
+  );
+}
+
+export function ConnectMetaForm({ reconnect }: { reconnect: boolean }) {
+  const [state, action, pending] = useActionState<ActionState | null, FormData>(connectMetaAction, null);
+  return (
+    <form action={action} className="grid max-w-xl gap-3">
+      <div className="grid gap-1.5">
+        <Label htmlFor="metaToken">System user access token</Label>
+        <Input id="metaToken" name="accessToken" type="password" required autoComplete="off" spellCheck={false} placeholder="EAAB…" />
+        <p className="text-xs text-muted-foreground">Sent only to the ProfitLens server, stored encrypted and never shown again. The ads_read permission is enough.</p>
+      </div>
+      <details className="rounded-md border px-3 py-2">
+        <summary className="cursor-pointer text-sm">My token expires after 60 days</summary>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Add the app&apos;s ID and secret so ProfitLens can refresh the token before it expires. Leave empty for a token that never expires.
+        </p>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="metaAppId">App ID</Label>
+            <Input id="metaAppId" name="appId" inputMode="numeric" autoComplete="off" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="metaAppSecret">App secret</Label>
+            <Input id="metaAppSecret" name="appSecret" type="password" autoComplete="off" />
+          </div>
+        </div>
+      </details>
+      <div>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Checking access with Meta…" : reconnect ? "Update token" : "Connect Meta"}
+        </Button>
+      </div>
+      <FormMessage state={state} />
+    </form>
   );
 }

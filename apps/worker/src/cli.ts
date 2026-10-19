@@ -1,4 +1,4 @@
-import { AdsSyncService, connectGoogleAdsServiceAccount, listAdAccounts, mapAdAccount } from "@profitlens/core/ads";
+import { AdsSyncService, connectGoogleAdsServiceAccount, connectMetaSystemUser, listAdAccounts, mapAdAccount } from "@profitlens/core/ads";
 import { importEcbRates } from "@profitlens/core/fx";
 import { ProfitService } from "@profitlens/core/profit";
 import { connectStoreWithClientCredentials, ShopifySyncService } from "@profitlens/core/shopify";
@@ -18,6 +18,7 @@ import { buildDeps, log } from "./deps";
  *   pnpm --filter @profitlens/worker sync ads-accounts <user-email>
  *   pnpm --filter @profitlens/worker sync ads-map <user-email> <adAccountId> <storeId|none>
  *   pnpm --filter @profitlens/worker sync ads-sync <adAccountId> [--full]
+ *   pnpm --filter @profitlens/worker sync meta-connect <user-email>      # uses META_SYSTEM_USER_TOKEN (+ META_APP_ID, META_APP_SECRET for 60-day tokens)
  *   pnpm --filter @profitlens/worker sync fx-import [--full]          # ECB reference rates (3 years on first run)
  */
 async function main() {
@@ -52,6 +53,18 @@ async function main() {
       const r = await connectGoogleAdsServiceAccount(deps, await scopeFor(deps.db, required(arg)), { keyJson, loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? null });
       log.info({ connectionId: r.connectionId, serviceAccount: r.serviceAccountEmail }, "connected");
       console.table(r.accounts.map((a) => ({ id: a.id, customerId: a.customerId, name: a.name, currency: a.currency, timezone: a.timezone, manager: a.isManager, status: a.status, storeId: a.storeId })));
+      break;
+    }
+    case "meta-connect": {
+      const accessToken = process.env.META_SYSTEM_USER_TOKEN;
+      if (!accessToken) throw new Error("META_SYSTEM_USER_TOKEN must be set (see docs/META_ADS_SETUP.md)");
+      const r = await connectMetaSystemUser(deps, await scopeFor(deps.db, required(arg)), {
+        accessToken,
+        appId: process.env.META_APP_ID ?? null,
+        appSecret: process.env.META_APP_SECRET ?? null,
+      });
+      log.info({ connectionId: r.connectionId, user: r.userName }, "connected");
+      console.table(r.accounts.map((a) => ({ id: a.id, accountId: a.accountId, name: a.name, currency: a.currency, timezone: a.timezone, status: a.status, storeId: a.storeId })));
       break;
     }
     case "ads-accounts":

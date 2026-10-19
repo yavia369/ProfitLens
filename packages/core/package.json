@@ -25,7 +25,8 @@
     "@profitlens/shopify": "workspace:*",
     "drizzle-orm": "0.45.4",
     "zod": "4.6.5",
-    "@profitlens/google-ads": "workspace:*"
+    "@profitlens/google-ads": "workspace:*",
+    "@profitlens/meta-ads": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

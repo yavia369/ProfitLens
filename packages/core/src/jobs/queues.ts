@@ -6,9 +6,9 @@ export const QUEUES = {
   reconcile: "shopify.reconcile",
   /** Recalculate every order of a store (policy change, large cost edits). */
   recalcStore: "profit.recalc-store",
-  /** Google Ads spend for one ad account ({ accountId, full? }). */
+  /** API ad spend for one ad account, any platform ({ accountId, full? }). Name kept from Phase 6. */
   adsSync: "ads.google.sync",
-  /** Cron fan-out: sync every mapped, enabled Google Ads account. */
+  /** Cron fan-out: sync every mapped, enabled API ad account (Google Ads, Meta). */
   adsSyncAll: "ads.google.sync-all",
   /** Cron fan-out: enqueue an incremental sync for every active store. */
   incrementalAll: "shopify.incremental-all",

@@ -1,6 +1,6 @@
 "use server";
 
-import { AdsSyncService, connectGoogleAdsServiceAccount, GoogleAdsError, mapAdAccount } from "@profitlens/core/ads";
+import { AdsSyncService, connectGoogleAdsServiceAccount, connectMetaSystemUser, GoogleAdsError, mapAdAccount, MetaAdsError } from "@profitlens/core/ads";
 import { enqueueBackfill, enqueueIncremental, QUEUES } from "@profitlens/core/jobs";
 import { connectStoreWithClientCredentials, ConnectionError } from "@profitlens/core/shopify";
 import { assertRole, assertStoresInScope, schema, TenantAccessError } from "@profitlens/db";
@@ -70,12 +70,12 @@ export async function reconcileAction(storeId: string): Promise<ActionState> {
   return { ok: true, message: "Reconciliation queued." };
 }
 
-// ---------------------------------------------------------------- Google Ads
+// ---------------------------------------------------------------- Ad platforms (Google Ads, Meta)
 
 function adsError(e: unknown): ActionState {
-  if (e instanceof GoogleAdsError || e instanceof TenantAccessError) return { ok: false, message: e.message };
-  console.error("google ads action", e);
-  return { ok: false, message: "Unexpected error talking to Google Ads. Nothing was changed." };
+  if (e instanceof GoogleAdsError || e instanceof MetaAdsError || e instanceof TenantAccessError) return { ok: false, message: e.message };
+  console.error("ads action", e);
+  return { ok: false, message: "Unexpected error talking to the ad platform. Nothing was changed." };
 }
 
 /** Imports spend for one account now (seconds, even for the 3-year history) so the user sees the result. */
@@ -93,6 +93,20 @@ export async function connectGoogleAdsAction(_prev: ActionState | null, form: Fo
     revalidatePath("/settings/stores");
     const n = r.accounts.filter((a) => !a.isManager).length;
     return { ok: true, message: `Connected as ${r.serviceAccountEmail}. Found ${n} ad account${n === 1 ? "" : "s"} — choose the store each one belongs to.` };
+  } catch (e) {
+    return adsError(e);
+  }
+}
+
+export async function connectMetaAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  const session = await requireAppSession();
+  const accessToken = String(form.get("accessToken") ?? "").trim();
+  if (!accessToken) return { ok: false, message: "Paste the system user access token." };
+  try {
+    const r = await connectMetaSystemUser(adsDeps(), session.scope, { accessToken, appId: String(form.get("appId") ?? "") || null, appSecret: String(form.get("appSecret") ?? "") || null });
+    revalidatePath("/settings/stores");
+    const n = r.accounts.length;
+    return { ok: true, message: `Connected as ${r.userName}. Found ${n} ad account${n === 1 ? "" : "s"} — choose the store each one belongs to.` };
   } catch (e) {
     return adsError(e);
   }

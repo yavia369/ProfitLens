@@ -165,6 +165,10 @@ test("configure costs for a connected store and see profit recalculated", async 
   await page.getByLabel("Service account key (JSON)").fill('{"type": "authorized_user"}');
   await page.getByRole("button", { name: "Update key" }).click(); // a connection exists (seeded)
   await expect(page.getByRole("alert").filter({ hasText: "This is not a service account key" })).toBeVisible();
+  // Meta: a malformed token is rejected before anything is sent to Meta.
+  await page.getByLabel("System user access token").fill("not-a-token");
+  await page.getByRole("button", { name: "Connect Meta" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "This is not a Meta access token." })).toBeVisible();
   // Mapping an account to the store saves it and reports why the first import could not run.
   await page.getByLabel("Store for E2E Google Ads").selectOption({ label: "E2E Boutique" });
   await expect(page.getByRole("alert").filter({ hasText: "Saved, but the first import failed: Google Ads connection has no stored credentials." })).toBeVisible();

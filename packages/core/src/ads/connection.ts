@@ -14,6 +14,7 @@ import {
   type RawCustomerClientRow,
   type RawCustomerRow,
 } from "@profitlens/google-ads";
+import { MetaAdsError, SYNCABLE_STATUSES as META_SYNCABLE_STATUSES } from "@profitlens/meta-ads";
 import { and, eq } from "drizzle-orm";
 import { decryptSecret, encryptSecret, type KeyRing } from "../security/crypto";
 
@@ -152,9 +153,13 @@ export async function mapAdAccount(db: Database, scope: OrgScope, accountId: str
   const [acct] = await db.select().from(schema.adAccount).where(and(eq(schema.adAccount.id, accountId), eq(schema.adAccount.organizationId, scope.organizationId)));
   if (!acct) throw new TenantAccessError("ad account not found");
   if (input.storeId) await assertStoresInScope(db, scope, [input.storeId]);
-  if (acct.isManager && input.syncEnabled) throw new GoogleAdsError("Manager accounts have no spend of their own; map the accounts under it instead.", "config");
-  if (input.syncEnabled && !input.storeId) throw new GoogleAdsError("Choose the store this account's spend belongs to before turning sync on.", "config");
-  if (acct.accountStatus && acct.accountStatus !== "ENABLED" && input.syncEnabled) throw new GoogleAdsError(`This Google Ads account is ${acct.accountStatus.toLowerCase()} and cannot be synced.`, "config");
+  const fail = (message: string) => (acct.platform === "meta" ? new MetaAdsError(message, "config") : new GoogleAdsError(message, "config"));
+  if (acct.isManager && input.syncEnabled) throw fail("Manager accounts have no spend of their own; map the accounts under it instead.");
+  if (input.syncEnabled && !input.storeId) throw fail("Choose the store this account's spend belongs to before turning sync on.");
+  const syncable = acct.platform === "meta" ? META_SYNCABLE_STATUSES.has(acct.accountStatus ?? "") : !acct.accountStatus || acct.accountStatus === "ENABLED";
+  if (input.syncEnabled && !syncable) {
+    throw fail(`This ${acct.platform === "meta" ? "Meta" : "Google Ads"} account is ${(acct.accountStatus ?? "unknown").toLowerCase().replace(/_/g, " ")} and cannot be synced.`);
+  }
   const storeChanged = acct.storeId !== input.storeId;
   await db
     .update(schema.adAccount)

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConnectStoreForm } from "@/components/sync/connect-store-form";
 import { listAdAccounts, listAdConnections } from "@profitlens/core/ads";
-import { AdAccountRow, ConnectGoogleAdsForm } from "@/components/ads/google-ads";
+import { AdAccountRow, ConnectGoogleAdsForm, ConnectMetaForm } from "@/components/ads/google-ads";
 import { Table, TBody, TH, THead, TR } from "@/components/ui/table";
 import { db } from "@/server/db";
 import { listAccessibleStores } from "@/server/reporting";
@@ -72,60 +72,98 @@ export default async function StoresPage() {
             <CardTitle>Google Ads</CardTitle>
             <CardDescription>
               Read-only access through a service account in your Google Cloud project. Spend syncs every 6 hours and re-reads the last 3 days to
-              catch Google&apos;s corrections. Setup guide: <code className="rounded bg-muted px-1">docs/GOOGLE_ADS_SETUP.md</code>. Meta and TikTok: phase 8
-              (until then, enter their spend under Costs → Ad spend).
+              catch Google&apos;s corrections. Setup guide: <code className="rounded bg-muted px-1">docs/GOOGLE_ADS_SETUP.md</code>.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 text-sm">
-          {connections.map((c) => (
-            <div key={c.id} className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{c.displayName}</span>
-              <Badge variant={c.status === "active" ? "positive" : "negative"}>{c.status === "active" ? "connected" : c.status.replace("_", " ")}</Badge>
-              {c.loginCustomerId ? <span className="text-muted-foreground">via manager {c.loginCustomerId}</span> : null}
-              {c.lastError ? <span className="text-negative">{c.lastError}</span> : null}
-            </div>
-          ))}
-          {accounts.length ? (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Ad account</TH>
-                  <TH>Store</TH>
-                  <TH>Sync</TH>
-                  <TH>Status</TH>
-                  <TH>
-                    <span className="sr-only">Actions</span>
-                  </TH>
-                </TR>
-              </THead>
-              <TBody>
-                {accounts.map(({ a }) => (
-                  <AdAccountRow
-                    key={a.id}
-                    editable={isAdmin}
-                    stores={liveStoreOptions}
-                    account={{
-                      id: a.id,
-                      customerId: a.externalId,
-                      name: a.name,
-                      currency: a.currency,
-                      timezone: a.timezone,
-                      isManager: a.isManager,
-                      accountStatus: a.accountStatus,
-                      storeId: a.storeId,
-                      syncEnabled: a.syncEnabled,
-                      spendSyncedThrough: a.spendSyncedThrough,
-                      lastError: a.lastError,
-                    }}
-                  />
-                ))}
-              </TBody>
-            </Table>
-          ) : null}
-          {isAdmin ? <ConnectGoogleAdsForm reconnect={connections.length > 0} /> : <p className="text-muted-foreground">Only workspace owners and admins can connect Google Ads.</p>}
+          <Connections list={connections.filter((c) => c.platform === "google_ads")} />
+          <AccountsTable accounts={accounts.filter(({ a }) => a.platform === "google_ads")} stores={liveStoreOptions} editable={isAdmin} />
+          {isAdmin ? (
+            <ConnectGoogleAdsForm reconnect={connections.some((c) => c.platform === "google_ads")} />
+          ) : (
+            <p className="text-muted-foreground">Only workspace owners and admins can connect Google Ads.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Meta Ads</CardTitle>
+            <CardDescription>
+              Read-only access through a system user in your Business Manager (ads_read). Spend and Meta-reported purchase value sync every 6 hours
+              and re-read the last 3 days. Setup guide: <code className="rounded bg-muted px-1">docs/META_ADS_SETUP.md</code>. Spend you entered
+              by hand for a day the API covers is replaced by the API figure.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 text-sm">
+          <Connections list={connections.filter((c) => c.platform === "meta")} />
+          <AccountsTable accounts={accounts.filter(({ a }) => a.platform === "meta")} stores={liveStoreOptions} editable={isAdmin} />
+          {isAdmin ? (
+            <ConnectMetaForm reconnect={connections.some((c) => c.platform === "meta")} />
+          ) : (
+            <p className="text-muted-foreground">Only workspace owners and admins can connect Meta.</p>
+          )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+type Connection = Awaited<ReturnType<typeof listAdConnections>>[number];
+type Account = Awaited<ReturnType<typeof listAdAccounts>>[number];
+
+function Connections({ list }: { list: readonly Connection[] }) {
+  return list.map((c) => (
+    <div key={c.id} className="flex flex-wrap items-center gap-2">
+      <span className="font-medium">{c.displayName}</span>
+      <Badge variant={c.status === "active" ? "positive" : "negative"}>{c.status === "active" ? "connected" : c.status.replace("_", " ")}</Badge>
+      {c.loginCustomerId ? <span className="text-muted-foreground">via manager {c.loginCustomerId}</span> : null}
+      {c.lastError ? <span className="text-negative">{c.lastError}</span> : null}
+    </div>
+  ));
+}
+
+function AccountsTable({ accounts, stores, editable }: { accounts: readonly Account[]; stores: readonly { id: string; name: string; timezone: string; currency: string }[]; editable: boolean }) {
+  if (!accounts.length) return null;
+  return (
+    <Table>
+      <THead>
+        <TR>
+          <TH>Ad account</TH>
+          <TH>Store</TH>
+          <TH>Sync</TH>
+          <TH>Status</TH>
+          <TH>
+            <span className="sr-only">Actions</span>
+          </TH>
+        </TR>
+      </THead>
+      <TBody>
+        {accounts.map(({ a }) => (
+          <AdAccountRow
+            key={a.id}
+            editable={editable}
+            stores={stores}
+            account={{
+              id: a.id,
+              platform: a.platform,
+              customerId: a.externalId,
+              name: a.name,
+              currency: a.currency,
+              timezone: a.timezone,
+              isManager: a.isManager,
+              accountStatus: a.accountStatus,
+              storeId: a.storeId,
+              syncEnabled: a.syncEnabled,
+              spendSyncedThrough: a.spendSyncedThrough,
+              lastError: a.lastError,
+            }}
+          />
+        ))}
+      </TBody>
+    </Table>
   );
 }

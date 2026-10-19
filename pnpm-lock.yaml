@@ -185,6 +185,9 @@ importers:
       '@profitlens/google-ads':
         specifier: workspace:*
         version: link:../google-ads
+      '@profitlens/meta-ads':
+        specifier: workspace:*
+        version: link:../meta-ads
       '@profitlens/shopify':
         specifier: workspace:*
         version: link:../shopify
@@ -262,6 +265,22 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   packages/google-ads:
+    dependencies:
+      '@profitlens/finance':
+        specifier: workspace:*
+        version: link:../finance
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/meta-ads:
     dependencies:
       '@profitlens/finance':
         specifier: workspace:*
