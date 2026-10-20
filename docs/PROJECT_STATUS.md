@@ -4,7 +4,10 @@ _Last updated: 2026-10-19_
 
 ## Current phase
 **All planned phases (1–9) complete.** Phase 9 approved by the owner on 2026-10-19 ("CONFIRM PHASE 9").
-Next: deployment on Railway (owner's choice; steps in `docs/DEPLOYMENT.md` → "Railway"), then live verification.
+**Deployed on Railway 2026-10-20:** https://web-production-3aad0.up.railway.app — project "ProfitLens", region
+Singapore (asia-southeast1), services `web` (health check passing, migrations applied), `worker` (running) and
+`Postgres-6nT5` (Postgres 18.6, owner chose 18 after the full suite passed on 18.6; 500 MB volume on the current
+plan). Secrets are Railway shared variables set by the owner. Next: owner signs up first, reconnects Luraflo.
 Open owner items: B4 (Google Ads key → live Phase 6 check), B8 (Luraflo costs), B10 (TikTok, optional).
 
 Phase 9 plan (ARCHITECTURE §8, PRODUCT_REQUIREMENTS §5/§7):
@@ -199,7 +202,7 @@ Phase 7 plan (PRODUCT_REQUIREMENTS M2):
 | B4 | **Owner action:** Google Cloud project with Google Ads API Explorer access + service account key, added as a read-only user in Google Ads — steps in `docs/GOOGLE_ADS_SETUP.md` (sent 2026-10-19) | Phase 6 live verification |
 | B9 | ~~Network allow-list for Phase 8~~ RESOLVED 2026-10-19 (Meta, Stripe, PayPal, ECB, TikTok portal reachable). B2's FX part is resolved by the ECB host | — |
 | B10 | **Owner action (optional, TikTok):** allow `sf16-website-login.neutral.ttwstatic.com` (the TikTok API portal loads its docs from it), and for live use: a TikTok developer app with app review plus a TikTok ad account | TikTok Ads integration |
-| B5 | **Owner action (Railway chosen 2026-10-19):** hosting for the Docker image (any Docker host, or Railway/Fly/Render) + managed Postgres 16, and a domain with HTTPS. Redis is not needed. Steps: `docs/DEPLOYMENT.md` | Going live |
+| B5 | ~~Hosting~~ RESOLVED 2026-10-20 (Railway, see Current phase). Earlier note: **Owner action (Railway chosen 2026-10-19):** hosting for the Docker image (any Docker host, or Railway/Fly/Render) + managed Postgres 16, and a domain with HTTPS. Redis is not needed. Steps: `docs/DEPLOYMENT.md` | Going live |
 
 ## Next tasks
 1. Owner: deploy on Railway (B5, `docs/DEPLOYMENT.md`) and share the domain; B4 (Google Ads access, then
