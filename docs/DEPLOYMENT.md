@@ -73,7 +73,7 @@ differ slightly (INFERRED); the image itself was verified with Docker. Summary o
 
 Both app services get `DATABASE_URL=${{Postgres.DATABASE_URL}}` (Railway reference variable, private network) and
 the same `APP_URL`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEYS`, `ENCRYPTION_ACTIVE_KID`. The role comes from
-`PROCESS_ROLE`, so no custom start command is needed (`/app/docker-entrypoint.sh worker` also works as one).
+`PROCESS_ROLE` (the image has no default command, so the variable decides; `/app/docker-entrypoint.sh worker` also works as a start command). The web service sets `PORT=3000` to match its domain (Railway would otherwise inject 8080).
 The migration `0008` creates the `pg_trgm` extension; Railway's Postgres user owns the database, which is enough.
 
 ## After the first deploy

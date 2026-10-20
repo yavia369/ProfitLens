@@ -38,5 +38,5 @@ COPY --chown=node:node docker-entrypoint.sh ./
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD ["/app/docker-entrypoint.sh", "healthcheck"]
+# No default CMD: the role comes from the command (`web`, `worker`, …) or from PROCESS_ROLE, defaulting to web.
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["web"]
